@@ -692,14 +692,20 @@ namespace CUCoreLib.Helpers
 
         public static string LoadEmbeddedText(string resourcePath, Assembly sourceAssembly = null)
         {
-            using (var stream = LoadEmbeddedStream(resourcePath, sourceAssembly, "text"))
+            if (sourceAssembly == null)
             {
-                if (stream == null) return null;
+                Assembly assembly = ContentReloadSession.GetSourceAssemblyOverride();
+                if ((object)assembly == null)
+                    assembly = Assembly.GetCallingAssembly();
+                sourceAssembly = assembly;
+            }
 
-                using (var reader = new StreamReader(stream))
-                {
-                    return reader.ReadToEnd();
-                }
+            using (Stream stream = AssetLoader.LoadEmbeddedStream(resourcePath, sourceAssembly, "text"))
+            {
+                if (stream == null)
+                    return null;
+                using (StreamReader streamReader = new StreamReader(stream))
+                    return streamReader.ReadToEnd();
             }
         }
 
