@@ -152,6 +152,25 @@ namespace CUCoreLib.Networking
             return MultiplayerBridge.Broadcast(channel, payload, includeHost, reliable);
         }
 
+        /// <summary>
+        /// Sends to every instance in the lobby, including this one: the host broadcasts and applies
+        /// locally, a client asks the host to relay, and with no session the local handler just runs.
+        /// Pair it with RegisterHandler on the same channel.
+        /// </summary>
+        public static bool BroadcastEverywhere(string channel, object payload = null, bool reliable = true)
+        {
+            return MultiplayerBridge.BroadcastEverywhere(channel, payload, reliable);
+        }
+
+        /// <summary>
+        /// Sends to one instance whichever role you hold: host to any client, client to the host, and
+        /// client to another client through the host. Unknown ids return false.
+        /// </summary>
+        public static bool BroadcastToPeer(string channel, uint clientId, object payload = null, bool reliable = true)
+        {
+            return MultiplayerBridge.BroadcastToPeer(channel, clientId, payload, reliable);
+        }
+
         public static void RegisterSyncModule(string key, Func<JObject> capture, Action<JObject> apply = null)
         {
             ContentReloadSession.AssertNotActive("MultiplayerApi.RegisterSyncModule()",

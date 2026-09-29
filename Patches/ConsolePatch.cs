@@ -41,24 +41,27 @@ namespace CUCoreLib.Patches
             var body = PlayerCamera.main != null ? PlayerCamera.main.body : null;
             if (body == null) return;
 
-            var bodyCommand = ConsoleScript.SearchExact("setbodyfield");
-            if (bodyCommand != null)
-                AppendAutofill(bodyCommand, 0, BuildStatusFieldAutofill(StatusRegistry.EnumerateBodyStatuses(body)));
+            var limbStatusFields = new List<string>();
+            if (body.limbs != null)
+                foreach (var limb in body.limbs)
+                    if (limb != null)
+                        limbStatusFields.AddRange(BuildStatusFieldAutofill(StatusRegistry.EnumerateLimbStatuses(limb)));
 
-            var limbCommand = ConsoleScript.SearchExact("setlimbfield");
-            if (limbCommand == null || body.limbs == null) return;
-
-            foreach (var limb in body.limbs)
-                if (limb != null)
-                    AppendAutofill(limbCommand, 1, BuildStatusFieldAutofill(StatusRegistry.EnumerateLimbStatuses(limb)));
+            ReplaceStatusFieldAutofill(ConsoleScript.SearchExact("setbodyfield"), 0,
+                BuildStatusFieldAutofill(StatusRegistry.EnumerateBodyStatuses(body)));
+            ReplaceStatusFieldAutofill(ConsoleScript.SearchExact("setlimbfield"), 1, limbStatusFields);
         }
 
-        private static void AppendAutofill(Command command, int argumentIndex, IEnumerable<string> values)
+        private static void ReplaceStatusFieldAutofill(Command command, int argumentIndex, IEnumerable<string> values)
         {
             if (command == null || values == null) return;
             if (command.argAutofill == null) command.argAutofill = new Dictionary<int, List<string>>();
             if (!command.argAutofill.TryGetValue(argumentIndex, out var entries))
                 command.argAutofill[argumentIndex] = entries = new List<string>();
+
+            // Vanilla field names never contain a dot, so every dotted entry is one we added on a
+            // previous pass - possibly for a body from an earlier run.
+            entries.RemoveAll(entry => entry.Contains("."));
 
             foreach (var value in values)
                 if (!entries.Contains(value, StringComparer.OrdinalIgnoreCase)) entries.Add(value);
@@ -1051,6 +1054,24 @@ namespace CUCoreLib.Patches
             }
 
             return d[n, m];
+        }
+
+        [HarmonyPatch(typeof(ConsoleScript), "HandleDescriptionText")]
+        [HarmonyPrefix]
+        private static void RefreshStatusFieldSuggestions(string[] args)
+        {
+            // Statuses attach lazily through GetStatus<T>(), long after RegisterPlayerDetails has
+            // already built these two autofill lists, so rebuild them while the command is typed.
+            if (args == null || args.Length == 0) return;
+            if (!IsStatusFieldCommand(args[0])) return;
+
+            RefreshStatusFieldAutofill();
+        }
+
+        private static bool IsStatusFieldCommand(string commandName)
+        {
+            return string.Equals(commandName, "setbodyfield", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(commandName, "setlimbfield", StringComparison.OrdinalIgnoreCase);
         }
 
         [HarmonyPatch(typeof(ConsoleScript), "HandleDescriptionText")]

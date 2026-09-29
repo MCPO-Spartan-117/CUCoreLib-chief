@@ -863,7 +863,7 @@ namespace CUCoreLib.Helpers
             if (texture == null) return null;
 
             return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
-                pivot ?? new Vector2(0.5f, 0.5f), ppu);
+                pivot ?? new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
         }
 
         private static Sprite CreateSpriteVariant(Sprite sourceSprite, float pixelsPerUnit)
@@ -921,7 +921,7 @@ namespace CUCoreLib.Helpers
             if (!string.IsNullOrWhiteSpace(spriteName)) finalTexture.name = spriteName;
 
             var sprite = Sprite.Create(finalTexture, new Rect(0, 0, finalTexture.width, finalTexture.height),
-                new Vector2(0.5f, 0.5f), ppu);
+                new Vector2(0.5f, 0.5f), ppu, 0, SpriteMeshType.FullRect);
             if (!string.IsNullOrWhiteSpace(spriteName)) sprite.name = spriteName;
 
             return sprite;

@@ -41,6 +41,7 @@ namespace CUCoreLib.Networking
         private const string PayloadField = "payload";
         private const ushort RequestMessageId = 56420;
         private const ushort ResponseMessageId = 56421;
+        private const string RelayChannel = "cucorelib.mp.broadcast";
 
         private static readonly Dictionary<string, Func<JToken, JToken>> ServerHandlers =
             new Dictionary<string, Func<JToken, JToken>>(StringComparer.Ordinal);
@@ -226,6 +227,8 @@ namespace CUCoreLib.Networking
 
             _initialized = true;
             _harmony = harmony;
+            RegisterServerHandler(RelayChannel, HandleRelay);
+
             if (TryResolveRuntime())
             {
                 InstallReceivers();
@@ -281,6 +284,85 @@ namespace CUCoreLib.Networking
 
             var targets = includeHost ? GetMemberList("AllClientIds") : GetMemberList("AllClientIdsExceptHost");
             return SendMessage(ResponseMessageId, channel, "event", payload, reliable, null, 0u, targets);
+        }
+
+        public static bool BroadcastEverywhere(string channel, object payload = null, bool reliable = true)
+        {
+            return BroadcastRelayed(channel, null, payload, reliable);
+        }
+
+        public static bool BroadcastToPeer(string channel, uint clientId, object payload = null, bool reliable = true)
+        {
+            return BroadcastRelayed(channel, clientId, payload, reliable);
+        }
+
+        private static bool BroadcastRelayed(string channel, uint? target, object payload, bool reliable)
+        {
+            if (string.IsNullOrWhiteSpace(channel)) return false;
+
+            var name = channel.Trim();
+            var token = NormalizePayload(payload);
+
+            if (!IsAvailable || !IsRunning)
+            {
+                // No session: this instance is the whole lobby, so the local handler is the only delivery.
+                InvokeClientHandler(name, token);
+                return target == null;
+            }
+
+            if (IsServer) return Deliver(name, target, token, reliable);
+
+            // Clients cannot reach each other, so the host does the routing. Always reliable: losing
+            // this hop would lose the send for everyone it covers.
+            var envelope = new JObject
+            {
+                ["channel"] = name,
+                ["reliable"] = reliable,
+                ["payload"] = token
+            };
+            if (target.HasValue) envelope["target"] = target.Value;
+
+            return SendToServer(RelayChannel, envelope);
+        }
+
+        private static bool Deliver(string channel, uint? target, JToken payload, bool reliable)
+        {
+            if (target == null)
+            {
+                Broadcast(channel, payload, includeHost: false, reliable: reliable);
+                InvokeClientHandler(channel, payload);
+                return true;
+            }
+
+            if (ContainsClientId("AllClientIdsExceptHost", target.Value))
+                return SendToClient(target.Value, channel, payload, reliable);
+
+            if (!ContainsClientId("AllClientIds", target.Value)) return false;
+
+            InvokeClientHandler(channel, payload);
+            return true;
+        }
+
+        private static JToken HandleRelay(JToken envelope)
+        {
+            var channel = envelope?.Value<string>("channel");
+            if (string.IsNullOrWhiteSpace(channel)) return null;
+
+            Deliver(channel.Trim(), envelope.Value<uint?>("target"), envelope["payload"],
+                envelope.Value<bool?>("reliable") ?? true);
+            return null;
+        }
+
+        private static bool ContainsClientId(string memberName, uint clientId)
+        {
+            if (!(GetMemberList(memberName) is IEnumerable list)) return false;
+
+            foreach (var entry in list)
+            {
+                if (ConvertClientIdToUInt(entry) == clientId) return true;
+            }
+
+            return false;
         }
 
         internal static JToken NormalizePayload(object payload)
@@ -344,16 +426,21 @@ namespace CUCoreLib.Networking
             }
             else
             {
-                if (!ClientHandlers.TryGetValue(channel, out var handler)) return;
-                try
-                {
-                    handler(payload);
-                }
-                catch (Exception ex)
-                {
-                    CUCoreLibPlugin.Log?.LogWarning("CUCoreLib multiplayer client handler failed for '" + channel +
-                                                    "'.\n" + ex);
-                }
+                InvokeClientHandler(channel, payload);
+            }
+        }
+
+        private static void InvokeClientHandler(string channel, JToken payload)
+        {
+            if (!ClientHandlers.TryGetValue(channel, out var handler)) return;
+            try
+            {
+                handler(payload);
+            }
+            catch (Exception ex)
+            {
+                CUCoreLibPlugin.Log?.LogWarning("CUCoreLib multiplayer client handler failed for '" + channel +
+                                                "'.\n" + ex);
             }
         }
 

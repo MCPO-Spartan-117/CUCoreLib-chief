@@ -111,7 +111,9 @@ namespace CUCoreLib.Helpers
                 newTexture,
                 new Rect(0, 0, width, height),
                 new Vector2(0.5f, 0.5f),
-                sourceSprite.pixelsPerUnit
+                sourceSprite.pixelsPerUnit,
+                0,
+                SpriteMeshType.FullRect
             );
         }
 

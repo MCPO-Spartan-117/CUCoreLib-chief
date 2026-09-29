@@ -8,7 +8,7 @@ namespace CUCoreLib.Saving
     {
         public int GetVersion()
         {
-            return 1;
+            return 2;
         }
 
         public JToken Capture(WorldSaveContext context)
@@ -30,15 +30,26 @@ namespace CUCoreLib.Saving
                 });
             }
 
-            return buildings;
+            return new JObject
+            {
+                ["layer"] = context.World?.biomeDepth ?? -1,
+                ["buildings"] = buildings
+            };
         }
 
         public void Restore(WorldSaveContext context, JToken payload, int version, SaveRestoreContext contextForRestore)
         {
-            if (!(payload is JArray buildings)) return;
+            // Version 1 payloads are the bare buildings array, with no layer tag around them.
+            var buildings = payload is JObject root ? root["buildings"] as JArray : payload as JArray;
+            var layer = (payload as JObject)?.Value<int?>("layer");
+            if (buildings == null) return;
 
             contextForRestore.Defer(() =>
             {
+                // Deferred actions run a frame after the load, by then a layer transition may already have
+                // generated a different world. Payloads that carry no layer restore as they did before.
+                if (layer.HasValue && layer != WorldGeneration.world?.biomeDepth) return;
+
                 foreach (var runtime in BuildingEntityRegistry.GetActiveRuntimes())
                     if (runtime != null)
                         Object.Destroy(runtime.gameObject);

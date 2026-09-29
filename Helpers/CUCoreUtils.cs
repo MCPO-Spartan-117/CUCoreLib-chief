@@ -164,9 +164,14 @@ namespace CUCoreLib.Helpers
         private static string LastDialogueText;
 
         /// <summary>
-        /// Invoked after the <c>heal</c> console command heals a player.
+        /// Invoked after the <c>heal</c> console command heals the local player.
         /// </summary>
         public static event Action OnHeal;
+
+        /// <summary>
+        /// Invoked for every player a heal reaches, with that player's body. Other players' bodies only show up in multiplayer.
+        /// </summary>
+        public static event Action<Body> OnHealPlayer;
 
         /// <summary>
         /// Invoked when the player successfully enters last stand.
@@ -208,7 +213,11 @@ namespace CUCoreLib.Helpers
 
         internal static void RaiseOnHeal(Body player = null)
         {
-            RaisePlayerEvent(OnHeal, player);
+            TryGetBody(out var local);
+
+            if (player != null) OnHealPlayer?.Invoke(player);
+            // Other players' heals stop at OnHealPlayer so OnHeal keeps its once-per-local-heal contract.
+            if (ReferenceEquals(player, local)) RaisePlayerEvent(OnHeal, player);
         }
 
         internal static void RaiseOnLastStand(Body player = null)

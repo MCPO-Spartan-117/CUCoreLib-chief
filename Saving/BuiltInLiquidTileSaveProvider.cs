@@ -7,13 +7,14 @@ namespace CUCoreLib.Saving
     {
         public int GetVersion()
         {
-            return 1;
+            return 2;
         }
 
         public JToken Capture(WorldSaveContext context)
         {
             return new JObject
             {
+                ["layer"] = context.World?.biomeDepth ?? -1,
                 ["mapping"] = LiquidTileRegistry.CaptureMappingSnapshot(),
                 ["world"] = LiquidTileRegistry.CaptureWorldStateSnapshot()
             };
@@ -23,8 +24,14 @@ namespace CUCoreLib.Saving
         {
             if (!(payload is JObject obj)) return;
 
+            var layer = obj.Value<int?>("layer");
+
             contextForRestore.Defer(() =>
             {
+                // Flooded cells belong to the layer that captured them, unlike the id-to-byte mapping.
+                // Payloads that carry no layer restore as they did before the guard existed.
+                if (layer.HasValue && layer != WorldGeneration.world?.biomeDepth) obj["world"] = null;
+
                 LiquidTileRegistry.ApplyNetworkSnapshot(obj);
             });
         }
