@@ -209,13 +209,33 @@ namespace CUCoreLib.Patches
         }
 
         [HarmonyPatch(typeof(ConsoleScript), "TryExecuteCommand")]
-        [HarmonyPostfix]
-        private static void NotifyMultiplayerHeal(string[] args)
+        [HarmonyPrefix]
+        private static void OpenHealWindow(string[] args)
         {
-            if (args == null || args.Length == 0 || !string.Equals(args[0], "heal", StringComparison.OrdinalIgnoreCase) ||
-                !MultiplayerBridge.IsRunning || !MultiplayerBridge.IsServer || args.Length > 1) return;
+            KrokMpHealPatches.OpenHealWindow(IsHealCommand(args));
+        }
 
-            PlayerEventPatches.NotifyHeal(PlayerCamera.main != null ? PlayerCamera.main.body : null);
+        [HarmonyPatch(typeof(ConsoleScript), "TryExecuteCommand")]
+        [HarmonyPostfix]
+        private static void CloseHealWindow()
+        {
+            KrokMpHealPatches.CloseHealWindow();
+        }
+
+        // The window also closes from a finalizer: KrokMP can fail a command from its own prefix,
+        // which skips the original and leaves the postfix uncalled.
+        [HarmonyPatch(typeof(ConsoleScript), "TryExecuteCommand")]
+        [HarmonyFinalizer]
+        private static Exception CloseHealWindowOnFailure(Exception __exception)
+        {
+            KrokMpHealPatches.CloseHealWindow();
+            return __exception;
+        }
+
+        private static bool IsHealCommand(string[] args)
+        {
+            return args != null && args.Length > 0 &&
+                   string.Equals(args[0], "heal", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void HookHealCommand()

@@ -21,9 +21,14 @@ namespace CUCoreLib.Patches
             if (__instance == null ||
                 !BuildingEntityRegistry.TryGetDefinition(__instance.id, out var definition)) return;
 
-            if (!string.IsNullOrEmpty(definition.Name)) __instance.fullName = definition.Name;
+            // keys where nothing is localized
+            if (!string.IsNullOrEmpty(definition.Name) &&
+                string.Equals(__instance.fullName, __instance.id, StringComparison.Ordinal))
+                __instance.fullName = definition.Name;
 
-            if (!__instance.skipDescriptionSet && !string.IsNullOrEmpty(definition.Description))
+            if (__instance.skipDescriptionSet || string.IsNullOrEmpty(definition.Description)) return;
+
+            if (string.Equals(__instance.description, __instance.id + "dsc", StringComparison.Ordinal))
                 __instance.description = definition.Description;
         }
     }

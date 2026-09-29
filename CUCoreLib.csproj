@@ -248,6 +248,7 @@
         <Compile Include="Patches\CustomWearablePatches.cs"/>
         <Compile Include="Patches\CustomItemSerializationPatches.cs"/>
         <Compile Include="Patches\KrokMpCompatibilityPatches.cs"/>
+        <Compile Include="Patches\KrokMpHealPatches.cs"/>
         <Compile Include="Patches\KrokMpWorldChunkPatches.cs"/>
         <Compile Include="Patches\QoLUnknownCompatibilityPatches.cs"/>
         <Compile Include="Patches\LaunchOverridePatches.cs"/>

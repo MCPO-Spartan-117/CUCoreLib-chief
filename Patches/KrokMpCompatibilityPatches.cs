@@ -1,16 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
-using System.Collections.Generic;
 using BepInEx.Bootstrap;
 using CUCoreLib.Helpers;
 using CUCoreLib.Networking;
 using CUCoreLib.Registries;
 using HarmonyLib;
-using MonoMod.RuntimeDetour;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace CUCoreLib.Patches
 {
@@ -18,64 +15,30 @@ namespace CUCoreLib.Patches
     internal static class KrokMpCompatibilityPatches
     {
         private const string KrokMpPluginGuid = "KrokoshaCasualtiesMP";
-        private const string GOSyncPacketTypeName = "KrokoshaCasualtiesMP.GOSyncPacket";
-        private const string SyncInfoTypeName = "KrokoshaCasualtiesMP.SyncInfo";
+        private const string WorldChunkSyncTypeName = "KrokoshaCasualtiesMP.WorldChunkSync";
         private const string NetObjectRegistryTypeName = "KrokoshaCasualtiesMP.NetObjectRegistry";
         private const string NewObjectSystemTypeName = "KrokoshaCasualtiesMP.NewCoolerObjectPacketWriteReadSystem";
         private const string ItemSetupListenerTypeName = "KrokoshaCasualtiesMP.Item_SetupItems_Listener";
         private static bool _installed;
         private static bool _retryScheduled;
         private static bool _chunkRetryScheduled;
-        private static Hook _applyHook;
         private static bool _newLoaderPatched;
         private static bool _liquidRegistryPatched;
-        private static Type _syncInfoType;
-        private static Type _netObjectRegistryType;
-        private static MethodInfo _getSyncInfoMethod;
-        private static MethodInfo _registerGoMethod;
+        private static List<string> _canonicalLiquidOrder;
         private static MethodInfo _serverEnsureItemNetworkRegisteredMethod;
-        private static MethodInfo _unregisterGoMethod;
-        private static MethodInfo _clientGetRequestedExistenceObjFromIdMethod;
-        private static FieldInfo _netSyncIdField;
-        private static FieldInfo _objTypeField;
-        private static FieldInfo _posField;
-        private static FieldInfo _angleField;
-        private static FieldInfo _scaleXField;
-        private static FieldInfo _scaleYField;
-        private static FieldInfo _syncInfoGoField;
-        private static FieldInfo _syncInfoLastUpdateTimeField;
-        private static FieldInfo _syncInfoObjTypeField;
-        private static FieldInfo _syncInfoSyncIdField;
-        private static FieldInfo _knownEntitiesWithNonUniqueIdField;
-        private static MethodInfo _syncInfoIsIgnoredMethod;
 
         internal static void Install(Harmony harmony)
         {
             if (harmony != null)
             {
-                var chunkType = ResolveLoadedType("KrokoshaCasualtiesMP.WorldChunkSync");
+                var chunkType = ResolveLoadedType(WorldChunkSyncTypeName);
                 KrokMpWorldChunkPatches.Install(harmony, chunkType);
                 if (!KrokMpWorldChunkPatches.IsInstalled && chunkType == null && IsKrokMpExpected())
                     ScheduleChunkRetry(harmony);
+
+                KrokMpHealPatches.Install(harmony);
             }
             if (harmony == null || _installed) return;
-
-            var patchedAnything = false;
-
-            var packetType = ResolveLoadedType(GOSyncPacketTypeName);
-            if (packetType != null)
-            {
-                var apply = AccessTools.Method(packetType, "Apply", new[] { typeof(string), typeof(uint) });
-                if (apply != null && TryResolveReflection(packetType))
-                {
-                    var replacement = CreateApplyReplacement(packetType);
-                    if (replacement != null)
-                    {
-                        _applyHook = new Hook(apply, replacement);
-                        patchedAnything = true;
-                    }
-                }
-            }
 
             if (!_newLoaderPatched)
             {
@@ -92,7 +55,6 @@ namespace CUCoreLib.Patches
                             harmony.Patch(loadObjectResource,
                                 prefix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
                                     nameof(LoadObjectResource_Prefix)));
-                            patchedAnything = true;
                         }
 
                         _newLoaderPatched = loadObjectResources.Any();
@@ -112,22 +74,27 @@ namespace CUCoreLib.Patches
                             priority = Priority.Last
                         });
                     _liquidRegistryPatched = true;
-                    patchedAnything = true;
                 }
             }
 
-            if (patchedAnything)
+            if (!_newLoaderPatched && !_liquidRegistryPatched)
             {
-                RefreshLiquidRegistry();
-                if (_newLoaderPatched || _applyHook != null)
-                {
-                    _installed = true;
-                    CUCoreLibPlugin.Log?.LogInfo("CUCoreLib, with friends!");
-                    return;
-                }
+                ScheduleRetry(harmony);
+                return;
             }
 
-            ScheduleRetry(harmony);
+            _installed = true;
+            RefreshLiquidRegistry();
+            CUCoreLibPlugin.Log?.LogInfo("CUCoreLib, with friends!");
+        }
+
+        // KrokMP's liquid wire IDs are positional indexes into Liquids.Registry, so every peer has to
+        // enumerate the same way. The host publishes its order in the multiplayer snapshot and clients
+        // adopt it here; null means "this peer is the source, use its own insertion order".
+        internal static void SetCanonicalLiquidOrder(List<string> order)
+        {
+            _canonicalLiquidOrder = order != null && order.Count > 0 ? order : null;
+            RefreshLiquidRegistry();
         }
 
         internal static void RefreshLiquidRegistry()
@@ -145,18 +112,23 @@ namespace CUCoreLib.Patches
 
                 if (Liquids.Registry.Count > byte.MaxValue + 1) return;
 
-                var count = Liquids.Registry.Count;
+                var orderedIds = new List<string>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                if (_canonicalLiquidOrder != null)
+                    foreach (var id in _canonicalLiquidOrder)
+                        if (seen.Add(id)) orderedIds.Add(id);
+
+                foreach (var id in Liquids.Registry.Keys)
+                    if (seen.Add(id)) orderedIds.Add(id);
+
+                var count = Math.Min(orderedIds.Count, byte.MaxValue + 1);
                 var ids = new Dictionary<string, byte>(count, StringComparer.Ordinal);
                 var reverseIds = new string[count];
-                var index = 0;
-                // KrokMP assigns byte IDs in this exact enumeration order; sorting breaks legacy peers.
-                foreach (var liquid in Liquids.Registry)
+                for (var index = 0; index < count; index++)
                 {
-                    if (index == count) break;
-
-                    ids[liquid.Key] = (byte)index;
-                    reverseIds[index] = liquid.Key;
-                    index++;
+                    // Unknown IDs keep their slot so a missing mod cannot shift every later liquid.
+                    if (Liquids.Registry.ContainsKey(orderedIds[index])) ids[orderedIds[index]] = (byte)index;
+                    reverseIds[index] = orderedIds[index];
                 }
 
                 idsField.SetValue(null, ids);
@@ -190,186 +162,6 @@ namespace CUCoreLib.Patches
         private static void RefreshLiquidRegistry_AfterItemSetup()
         {
             RefreshLiquidRegistry();
-        }
-
-        private static DynamicMethod CreateApplyReplacement(Type packetType)
-        {
-            if (packetType == null || _syncInfoType == null) return null;
-
-            var helper = AccessTools.Method(typeof(KrokMpCompatibilityPatches), nameof(ApplyReplacementBoxed));
-            if (helper == null) return null;
-
-            var method = new DynamicMethod(
-                "CUCoreLib_KrokMP_GOSyncPacket_ApplyReplacement",
-                _syncInfoType,
-                new[]
-                {
-                    packetType.MakeByRefType(),
-                    typeof(string),
-                    typeof(uint)
-                },
-                typeof(KrokMpCompatibilityPatches).Module,
-                true);
-
-            var il = method.GetILGenerator();
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldobj, packetType);
-            il.Emit(OpCodes.Box, packetType);
-            il.Emit(OpCodes.Ldarg_1);
-            il.Emit(OpCodes.Ldarg_2);
-            il.Emit(OpCodes.Call, helper);
-            il.Emit(OpCodes.Castclass, _syncInfoType);
-            il.Emit(OpCodes.Ret);
-            return method;
-        }
-
-        private static bool TryResolveReflection(Type packetType)
-        {
-            _syncInfoType = ResolveLoadedType(SyncInfoTypeName);
-            _netObjectRegistryType = ResolveLoadedType(NetObjectRegistryTypeName);
-            if (_syncInfoType == null || _netObjectRegistryType == null) return false;
-
-            _getSyncInfoMethod = AccessTools.Method(packetType, "GetSyncInfo");
-            _registerGoMethod = AccessTools.Method(_netObjectRegistryType, "_RegisterGO",
-                new[] { typeof(GameObject), typeof(uint) });
-            _serverEnsureItemNetworkRegisteredMethod = AccessTools.Method(_netObjectRegistryType,
-                "Server_EnsureItemIsNetworkRegistered", new[] { typeof(GameObject) });
-            _unregisterGoMethod = AccessTools.Method(_netObjectRegistryType, "_UnregisterGO", new[] { typeof(uint) });
-            _clientGetRequestedExistenceObjFromIdMethod = AccessTools.Method(_netObjectRegistryType,
-                "Client_GetRequestedExistenceObjFromId", new[] { typeof(uint) });
-            _netSyncIdField = AccessTools.Field(packetType, "net_syncid");
-            _objTypeField = AccessTools.Field(packetType, "objtype");
-            _posField = AccessTools.Field(packetType, "pos");
-            _angleField = AccessTools.Field(packetType, "angle");
-            _scaleXField = AccessTools.Field(packetType, "scale_x");
-            _scaleYField = AccessTools.Field(packetType, "scale_y");
-            _syncInfoGoField = AccessTools.Field(_syncInfoType, "go");
-            _syncInfoLastUpdateTimeField = AccessTools.Field(_syncInfoType, "last_update_time");
-            _syncInfoObjTypeField = AccessTools.Field(_syncInfoType, "objtype");
-            _syncInfoSyncIdField = AccessTools.Field(_syncInfoType, "syncid");
-            _syncInfoIsIgnoredMethod = AccessTools.Method(_syncInfoType, "IsIgnored");
-            var scavMultiBuildingSynchronizerType =
-                ResolveLoadedType("KrokoshaCasualtiesMP.ScavMultiBuildingSynchronizer");
-            _knownEntitiesWithNonUniqueIdField =
-                AccessTools.Field(scavMultiBuildingSynchronizerType, "known_entities_with_nonunique_id");
-
-            return _getSyncInfoMethod != null &&
-                   _registerGoMethod != null &&
-                   _unregisterGoMethod != null &&
-                   _clientGetRequestedExistenceObjFromIdMethod != null &&
-                   _netSyncIdField != null &&
-                   _objTypeField != null &&
-                   _posField != null &&
-                   _angleField != null &&
-                   _scaleXField != null &&
-                   _scaleYField != null &&
-                   _syncInfoGoField != null &&
-                   _syncInfoLastUpdateTimeField != null &&
-                   _syncInfoObjTypeField != null &&
-                   _syncInfoSyncIdField != null &&
-                   _syncInfoIsIgnoredMethod != null;
-        }
-
-        private static object ApplyReplacementBoxed(object packet, string resource_stringid, uint request_response)
-        {
-            if (packet == null) return null;
-
-            if (request_response != 0u)
-            {
-                var requested =
-                    _clientGetRequestedExistenceObjFromIdMethod.Invoke(null, new object[] { request_response }) as
-                        GameObject;
-                if (requested != null)
-                {
-                    var requestedSyncInfo = RegisterPacketObject(packet, requested);
-                    if (requestedSyncInfo == null || IsIgnored(requestedSyncInfo)) return null;
-
-                    ApplyTransform(packet, requested);
-                    TouchSyncInfo(requestedSyncInfo);
-                    return requestedSyncInfo;
-                }
-            }
-
-            var syncInfo = _getSyncInfoMethod.Invoke(packet, null);
-            if (syncInfo != null)
-            {
-                if (IsIgnored(syncInfo)) return null;
-
-                TouchSyncInfo(syncInfo);
-                var existing = _syncInfoGoField.GetValue(syncInfo) as GameObject;
-                if (existing != null)
-                {
-                    ApplyTransform(packet, existing);
-                    return syncInfo;
-                }
-
-                _unregisterGoMethod.Invoke(null, new object[] { (uint)_syncInfoSyncIdField.GetValue(syncInfo) });
-            }
-
-            if (string.IsNullOrWhiteSpace(resource_stringid)) return null;
-
-            if (!TryResolveResourcePrefab(resource_stringid, out var prefab) ||
-                prefab == null)
-            {
-                LogMissingCustomResolution(resource_stringid);
-                return null;
-            }
-
-            var position = (Vector2)_posField.GetValue(packet);
-            var instance = CustomInstantiate.PrepareInstantiatedObject(
-                CustomInstantiate.InstantiateInActiveScene(prefab, position, Quaternion.identity));
-            if (instance == null) return null;
-
-            var registered = RegisterPacketObject(packet, instance);
-            if (registered == null)
-            {
-                Object.Destroy(instance);
-                return null;
-            }
-
-            ApplyTransform(packet, instance);
-            TouchSyncInfo(registered);
-            return registered;
-        }
-
-        private static bool IsIgnored(object syncInfo)
-        {
-            var result = _syncInfoIsIgnoredMethod.Invoke(syncInfo, null);
-            return result is bool flag && flag;
-        }
-
-        private static void ApplyTransform(object packet, GameObject instance)
-        {
-            if (instance == null) return;
-
-            var position = (Vector2)_posField.GetValue(packet);
-            var angle = (float)_angleField.GetValue(packet);
-            var scaleX = (float)_scaleXField.GetValue(packet);
-            var scaleY = (float)_scaleYField.GetValue(packet);
-            instance.transform.localScale = new Vector3(scaleX, scaleY, instance.transform.localScale.z);
-            if (instance.TryGetComponent(out Rigidbody2D rigidbody) && rigidbody.bodyType == RigidbodyType2D.Dynamic)
-            {
-                rigidbody.position = position;
-                rigidbody.rotation = angle;
-                return;
-            }
-
-            instance.transform.position = position;
-            instance.transform.rotation = Quaternion.Euler(0f, 0f, angle);
-        }
-
-        private static object RegisterPacketObject(object packet, GameObject instance)
-        {
-            var registered =
-                _registerGoMethod.Invoke(null, new object[] { instance, (uint)_netSyncIdField.GetValue(packet) });
-            if (registered != null) _syncInfoObjTypeField.SetValue(registered, _objTypeField.GetValue(packet));
-
-            return registered;
-        }
-
-        private static void TouchSyncInfo(object syncInfo)
-        {
-            _syncInfoLastUpdateTimeField.SetValue(syncInfo, Time.realtimeSinceStartupAsDouble);
         }
 
         private static bool TryResolveResourcePrefab(string resourceStringId, out GameObject prefab)
@@ -429,16 +221,6 @@ namespace CUCoreLib.Patches
             return false;
         }
 
-        private static void LogMissingCustomResolution(string resourceStringId)
-        {
-            var normalized = SpawnIdHelpers.NormalizeSpawnId(resourceStringId);
-            var hasItem = ItemRegistry.TryGetCustomInfo(normalized, out _);
-            var hasBuilding = BuildingEntityRegistry.TryGetDefinition(normalized, out _);
-            if (hasItem || hasBuilding)
-                CUCoreLibPlugin.Log?.LogWarning("CUCoreLib could not build KrokMP custom resource '" +
-                                                resourceStringId.Trim() + "' even though it is registered.");
-        }
-
         private static void ScheduleRetry(Harmony harmony)
         {
             if (_retryScheduled || !IsKrokMpExpected()) return;
@@ -462,7 +244,7 @@ namespace CUCoreLib.Patches
             {
                 _chunkRetryScheduled = false;
                 if (!KrokMpWorldChunkPatches.IsInstalled)
-                    KrokMpWorldChunkPatches.Install(harmony, ResolveLoadedType("KrokoshaCasualtiesMP.WorldChunkSync"));
+                    KrokMpWorldChunkPatches.Install(harmony, ResolveLoadedType(WorldChunkSyncTypeName));
                 if (!KrokMpWorldChunkPatches.IsInstalled && IsKrokMpExpected())
                     ScheduleChunkRetry(harmony);
             });
@@ -470,8 +252,7 @@ namespace CUCoreLib.Patches
 
         private static bool IsKrokMpExpected()
         {
-            return ResolveLoadedType(GOSyncPacketTypeName) != null ||
-                   Chainloader.PluginInfos.ContainsKey(KrokMpPluginGuid);
+            return Chainloader.PluginInfos.ContainsKey(KrokMpPluginGuid);
         }
 
         private static Type ResolveLoadedType(string fullName)

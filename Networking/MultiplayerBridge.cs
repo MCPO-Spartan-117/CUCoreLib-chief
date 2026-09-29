@@ -721,10 +721,10 @@ namespace CUCoreLib.Networking
             _serverSendToMethod = ResolveMethod(_netType, new[] { "Server_SendTo" },
                 new[] { _deliveryMethodType, _writerType, typeof(uint) });
             _serverSendToClientsMethod = ResolveSendToClientsMethod(_netType, _deliveryMethodType, _writerType);
-            _registerServerReceiverMethod = ResolveMethod(_netType,
-                new[] { "RegisterServerReceiver", "RegisterServerReciever" }, new[] { typeof(ushort), null });
-            _registerClientReceiverMethod = ResolveMethod(_netType,
-                new[] { "RegisterClientReceiver", "RegisterClientReciever" }, new[] { typeof(ushort), null });
+            _registerServerReceiverMethod = ResolveMethod(_netType, new[] { "RegisterServerReceiver" },
+                new[] { typeof(ushort), null });
+            _registerClientReceiverMethod = ResolveMethod(_netType, new[] { "RegisterClientReceiver" },
+                new[] { typeof(ushort), null });
             _writerPutStringMethod = ResolveStringPutMethod();
             _readerGetStringMethod = ResolveStringGetMethod();
             _writerPutUShortMethod = _writerType.GetMethod("Put", new[] { typeof(ushort) });
@@ -803,6 +803,7 @@ namespace CUCoreLib.Networking
                                     ParameterMatches(writerType, candidate.Parameters[1].ParameterType))
                 .ToArray();
 
+            MethodInfo looseFallback = null;
             foreach (var candidate in candidates)
             {
                 var targetsType = UnwrapByRef(candidate.Parameters[2].ParameterType);
@@ -811,23 +812,11 @@ namespace CUCoreLib.Networking
 
                 var elementType = targetsType.GetGenericArguments()[0];
                 if (IsClientIdType(elementType)) return candidate.Method;
+                if (looseFallback == null && elementType.IsValueType) looseFallback = candidate.Method;
             }
 
-            foreach (var candidate in candidates)
-            {
-                var targetsType = UnwrapByRef(candidate.Parameters[2].ParameterType);
-                if (targetsType == null || !targetsType.IsGenericType) continue;
-                if (targetsType.GetGenericTypeDefinition() != typeof(IEnumerable<>)) continue;
-
-                var elementType = targetsType.GetGenericArguments()[0];
-                if (elementType.IsValueType) return candidate.Method;
-            }
-
-            // Fall back to the legacy loose resolution so a future KrokMP
-            // signature change degrades to the previous behaviour instead of
-            // failing the whole bridge resolution outright.
-            return ResolveMethod(netType, new[] { "Server_SendToClients" },
-                new[] { deliveryMethodType, writerType, typeof(IEnumerable) });
+          
+            return looseFallback;
         }
 
         private static MethodInfo GetSendToClientsInvoker()
@@ -859,18 +848,13 @@ namespace CUCoreLib.Networking
             var deliveryType = UnwrapByRef(parameters[0].ParameterType);
             var writerType = UnwrapByRef(parameters[1].ParameterType);
             var targetsType = UnwrapByRef(parameters[2].ParameterType);
-            // The wrapper narrows the boxed targets object with a castclass, which
-            // is only legal for reference types. If a future KrokMP signature ever
-            // used a value type here, fall back to the raw method (the old
-            // behaviour) rather than emitting invalid IL.
+           
             if (deliveryType == null || writerType == null || targetsType == null || targetsType.IsValueType)
                 return method;
 
             // The wrapper forwards to the original `in` signature. C# `in`
             // parameters are emitted as byref parameters carrying a
-            // modreq(IsReadOnlyAttribute); Mono's JIT ignores custom modifiers
-            // when verifying call sites, so pushing the addresses of locals is
-            // sufficient and the wrapper verifies fine.
+            // modreq(IsReadOnlyAttribute)
             //
             // IL:
             //   ldarg.0                -> stloc.0 (delivery)
@@ -879,12 +863,7 @@ namespace CUCoreLib.Networking
             //   ldloca.0, ldloca.1, ldloca.2
             //   call Server_SendToClients
             //   ret
-            //
-            // The third wrapper parameter is deliberately declared as `object`
-            // (instead of the unknown IEnumerable<knetid> type) so that
-            // MethodInfo.Invoke accepts the List<knetid> argument via its normal
-            // assignability check; the castclass in the IL then narrows it to the
-            // exact interface type the original method expects.
+        
             var invoker = new DynamicMethod(
                 "CUCoreLib_MP_SendToClients_Invoker_" + _dynamicMethodCounter++,
                 typeof(void),

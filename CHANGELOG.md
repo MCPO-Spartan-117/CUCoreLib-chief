@@ -19,11 +19,16 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - Locale files can now be scoped per mod with the `{LangCode}-{modGuid}.json` naming scheme (e.g. `EN-net.Jimmyking.netdescents.json`), both as embedded resources/loose files, to avoid locale conflict. 
 - ^ that is, any given locale with the mod GUID inside the file name takes priority for said mod
 - `AssetLoader` audio loading now supports `.ogg` files. Rejoice, `.ogg` enjoyers!
+- KrokMP 4.1.2 support for some mods developed on 4.0.1 and 4.1.2. For mods using cucorelib's net send/recieve, it'll now work. For mods using reflection or harmony patchers on the affected renames, not much can be done sadly :(
+- Added `MultiplayerApi.BroadcastEverywhere(channel, payload, reliable)`,`MultiplayerApi.BroadcastToPeer(channel, clientId, payload, reliable)` 
+- Multiplayer `Heal` commands now trigger the OnHeal CUCoreUtils delegate
 
 ### Changes
 - Moodle queues now default to .5s refresh (this matches vanilla, so it should fix mismatched animations)
 - Explicit MP support for buildingEntites, tiles. Note this might break for people using v1.0.4/1.0.5 <-> v1.0.6 in terms of crossplay
 - Custom buildings (and items) no longer stick around between scene changes in certain cases. This shouldn't (?) break your mods, but do tell me if it does
+- Dropped the KrokMP v3 compat backfill, surely there's no one using v3 nowadays
+- Custom building and custom liquid save data now carries the layer it was captured on (for saving + loading, in case the layer changes)
 
 ### Fixes
 - `EnableHotReload` warns instead of throws when it can't see `Awake()`
@@ -32,6 +37,11 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - Fixed custom battery charge resetting (Thanks, MCPO-Spartan-117!)
 - ""Fixed"" large amounts of data being truncated when sending over multiplayer requests
 - Fixed `AddRigidbody2D` (t'was a layer issue)
+- Fixed modded buildingEntites ignoring locale overlays for buildingEntites
+- Fixed modded setting tabs (UI) and refreshing for custom tabs (UX)
+- Multiplayer liquid sync now uses the host's liquid ordering, if possible
+- Sprites that `AssetLoader (or FileLoader)` build from a texture or file now use a Full Rect mesh, so it no longer spams `Sprite Tiling might not appear correctly because the Sprite used is not generated with Full Rect` in the logs. This change should be completely harmless
+- `setbodyfield` and `setlimbfield` now autofill custom statuses too
 
 
 ## v1.0.5 (Stable)

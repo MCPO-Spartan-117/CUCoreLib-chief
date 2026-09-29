@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CUCoreLib.ContentReload;
 using CUCoreLib.Helpers;
+using CUCoreLib.Patches;
 using CUCoreLib.Registries;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -241,6 +242,12 @@ namespace CUCoreLib.Networking
         {
             var root = new JObject();
             var liquids = new JArray();
+
+            // This peer is the ordering source: publish the exact registry order KrokMP's byte IDs
+            // are derived from, so clients rebuild the same indexes instead of their own load order.
+            KrokMpCompatibilityPatches.SetCanonicalLiquidOrder(null);
+            if (Liquids.Registry != null)
+                root["__registryOrder"] = new JArray(Liquids.Registry.Keys.ToArray());
 
             foreach (var id in LiquidRegistry.GetRegisteredLiquidIds())
             {

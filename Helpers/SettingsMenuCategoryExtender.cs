@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CUCoreLib.Registries;
@@ -11,6 +12,8 @@ namespace CUCoreLib.Helpers
     {
         private const int BuiltInTabCount = 5;
         private const float MinimumInterButtonGap = 2f;
+        private const float TabRowGap = 4f;
+        private const string CustomTabNamePrefix = "CUCoreLibSettingsTab_";
         private const float ScrollPixelsPerWheelStep = 48f;
         private readonly Dictionary<Button, int> buttonCategoryIndices = new Dictionary<Button, int>();
 
@@ -161,12 +164,22 @@ namespace CUCoreLib.Helpers
                 ModOptionsRegistry.TryGetOwnedCustomCategory(activeOwnedCategoryKey, out var activeEntry) &&
                 activeEntry != null)
                 activeCategoryIndex = activeEntry.CategoryIndex;
+            // Refreshes fire while a menu stays open. So we don't snap back to the top haha
+            var scrollY = menu.content != null ? menu.content.anchoredPosition.y : 0f;
             menu.SelectTab(activeCategoryIndex);
+            if (menu.content != null)
+            {
+                var anchoredPosition = menu.content.anchoredPosition;
+                anchoredPosition.y = scrollY;
+                menu.content.anchoredPosition = anchoredPosition;
+                ClampScrollPosition();
+            }
         }
 
         private void RebuildButtons()
         {
             RemoveCustomButtons();
+            PurgeUntrackedCustomButtons();
             buttonCategoryIndices.Clear();
             RestoreBuiltInLayout();
             RegisterBuiltInButtons();
@@ -196,7 +209,7 @@ namespace CUCoreLib.Helpers
             {
                 var category = categories[i];
                 var clone = Instantiate(template.gameObject, parent, false);
-                clone.name = $"CUCoreLibSettingsTab_{category.DisplayName}";
+                clone.name = CustomTabNamePrefix + category.DisplayName;
                 var cloneRect = clone.transform as RectTransform;
                 if (cloneRect != null) cloneRect.anchoredPosition = origin;
 
@@ -251,6 +264,27 @@ namespace CUCoreLib.Helpers
             customButtons.Clear();
         }
 
+        private void PurgeUntrackedCustomButtons()
+        {
+            var parent = FindStripParent();
+            if (!parent) return;
+
+            for (var i = parent.childCount - 1; i >= 0; i--)
+            {
+                var child = parent.GetChild(i);
+                if (!child || !child.name.StartsWith(CustomTabNamePrefix, StringComparison.Ordinal)) continue;
+                if (customButtons.Any(button => button && button.gameObject == child.gameObject)) continue;
+
+                Destroy(child.gameObject);
+            }
+        }
+
+        private Transform FindStripParent()
+        {
+            var first = menu?.buttons?.FirstOrDefault(button => button != null);
+            return first != null ? first.transform.parent : null;
+        }
+
         private void RegisterBuiltInButtons()
         {
             var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
@@ -265,8 +299,14 @@ namespace CUCoreLib.Helpers
         {
             if (menu == null || menu.buttons == null || menu.buttons.Count == 0) return null;
 
-            return menu.buttons.LastOrDefault(button => button != null && !customButtons.Contains(button)) ??
-                   menu.buttons.LastOrDefault();
+            var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
+            for (var i = builtInCount - 1; i >= 0; i--)
+            {
+                var button = menu.buttons[i];
+                if (button != null && !customButtons.Contains(button)) return button;
+            }
+
+            return menu.buttons.LastOrDefault(button => button != null && !customButtons.Contains(button));
         }
 
         private void ApplyButtonSprites()
@@ -358,49 +398,99 @@ namespace CUCoreLib.Helpers
 
         private void ReflowButtonsIntoOriginalBand()
         {
-            if (!capturedBuiltInLayout || menu == null || menu.buttons == null || menu.buttons.Count == 0 ||
-                builtInAnchoredPositions.Count < BuiltInTabCount || builtInSizes.Count < BuiltInTabCount)
+            if (!capturedBuiltInLayout) return;
+
+            var strip = CollectStripButtons();
+            if (strip.Count == 0) return;
+
+            var firstRect = strip[0].transform as RectTransform;
+            if (firstRect == null) return;
+
+            var parentRect = firstRect.parent as RectTransform;
+            if (parentRect == null) return;
+
+            var rowHeight = builtInSizes[0].y;
+            var bandLeft = GetBandLeft(firstRect, parentRect);
+            var bandWidth = GetBandWidth(bandLeft, parentRect);
+            var gap = strip.Count > 1 ? MinimumInterButtonGap : 0f;
+            var singleRowWidth = (bandWidth - gap * (strip.Count - 1)) / strip.Count;
+
+            var builtInRowY = firstRect.anchoredPosition.y;
+
+            var customCount = strip.Count(button => customButtons.Contains(button));
+            var builtInCount = strip.Count - customCount;
+
+            if (customCount == 0 || singleRowWidth >= builtInSizes[0].x)
+            {
+                LayoutTabRow(strip, parentRect, bandLeft, bandWidth, gap, builtInRowY, rowHeight);
                 return;
+            }
 
-            var totalButtons = menu.buttons.Count;
-            var firstLeft = builtInAnchoredPositions[0].x - builtInSizes[0].x * 0.5f;
-            var lastRight = GetTabStripRightEdge(firstLeft);
-            var availableWidth = Mathf.Max(0f, lastRight - firstLeft);
-            var gap = totalButtons > 1 ? MinimumInterButtonGap : 0f;
-            var targetWidth = totalButtons > 0
-                ? Mathf.Max(1f, (availableWidth - gap * (totalButtons - 1)) / totalButtons)
-                : availableWidth;
-            var currentX = firstLeft;
+            // Too many tabs, in this case we toss it above 
+            LayoutTabRow(strip.GetRange(0, builtInCount), parentRect, bandLeft, bandWidth, gap, builtInRowY, rowHeight);
+            LayoutTabRow(strip.GetRange(builtInCount, customCount), parentRect, bandLeft, bandWidth, gap,
+                builtInRowY + rowHeight + TabRowGap, rowHeight);
+        }
 
-            for (var i = 0; i < totalButtons; i++)
+        private List<Button> CollectStripButtons()
+        {
+            var strip = new List<Button>();
+            var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
+
+            for (var i = 0; i < builtInCount; i++)
             {
                 var button = menu.buttons[i];
+                if (button != null && !customButtons.Contains(button)) strip.Add(button);
+            }
+
+            foreach (var button in customButtons)
+            {
+                if (button && button.transform is RectTransform) strip.Add(button);
+            }
+
+            return strip;
+        }
+
+        private void LayoutTabRow(List<Button> row, RectTransform parentRect, float bandLeft, float bandWidth,
+            float gap, float rowY, float rowHeight)
+        {
+            if (row.Count == 0) return;
+
+            var targetWidth = Mathf.Max(1f, (bandWidth - gap * (row.Count - 1)) / row.Count);
+            var currentLeft = bandLeft;
+
+            foreach (var button in row)
+            {
                 var rect = button != null ? button.transform as RectTransform : null;
                 if (rect == null) continue;
 
-                var baselineSize = i < builtInSizes.Count ? builtInSizes[i] : builtInSizes[builtInSizes.Count - 1];
-                rect.sizeDelta = new Vector2(targetWidth, baselineSize.y);
-                rect.anchoredPosition = new Vector2(currentX + targetWidth * 0.5f, rect.anchoredPosition.y);
-                currentX += targetWidth + gap;
+                rect.sizeDelta = new Vector2(targetWidth, rowHeight);
+                rect.anchoredPosition = new Vector2(
+                    currentLeft + targetWidth * 0.5f - GetAnchorRefX(rect, parentRect), rowY);
+                currentLeft += targetWidth + gap;
 
                 var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (label) NormalizeTabLabel(label);
             }
         }
 
-        private float GetTabStripRightEdge(float firstLeft)
+        private float GetBandLeft(RectTransform firstRect, RectTransform parentRect)
         {
-            var parentRect = menu.buttons[0] != null ? menu.buttons[0].transform.parent as RectTransform : null;
-            if (parentRect == null)
-            {
-                return builtInAnchoredPositions[BuiltInTabCount - 1].x +
-                       builtInSizes[BuiltInTabCount - 1].x * 0.5f;
-            }
+            return GetAnchorRefX(firstRect, parentRect) + firstRect.anchoredPosition.x - builtInSizes[0].x * 0.5f;
+        }
 
-            // The vanilla buttons occupy only part of their parent. Use the matching right inset so
-            // custom tabs consume the entire visible tab strip instead of stopping at the Language tab.
-            var leftInset = firstLeft - parentRect.rect.xMin;
-            return parentRect.rect.xMax - leftInset;
+        private float GetBandWidth(float bandLeft, RectTransform parentRect)
+        {
+            // The vanilla tabs only cover part of their parent. Mirror the left inset onto the right
+            // side so the strip always fills the visible band, whatever the tab count is.
+            var leftInset = bandLeft - parentRect.rect.xMin;
+            return Mathf.Max(1f, parentRect.rect.width - leftInset * 2f);
+        }
+
+        private static float GetAnchorRefX(RectTransform rect, RectTransform parentRect)
+        {
+            var anchorMid = (rect.anchorMin.x + rect.anchorMax.x) * 0.5f;
+            return parentRect.rect.xMin + anchorMid * parentRect.rect.width;
         }
 
         private static void NormalizeTabLabel(TMP_Text label)

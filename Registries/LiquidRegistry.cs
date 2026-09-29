@@ -342,6 +342,12 @@ namespace CUCoreLib.Registries
                 {
                 }
             }
+
+            // Here goes nothing
+            // This theoretically should be okay for backfull (v4.0.1. <-> v4.0.1) 
+            // between ccl versions, and for a ccl user and non-ccl user
+            KrokMpCompatibilityPatches.SetCanonicalLiquidOrder(
+                (snapshot["__registryOrder"] as JArray)?.ToObject<List<string>>());
         }
 
         public static bool TryGetCustomInfo(string id, out CustomLiquidInfo info)

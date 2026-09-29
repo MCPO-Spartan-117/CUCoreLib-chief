@@ -491,100 +491,32 @@ SaveRegistry.RegisterGlobalProvider("mymod.teleportMarkers", new TeleportMarkerS
 }
 
 function multiplayerCode(): string {
-  return `using System;
+  return `using CUCoreLib.Helpers;
 using CUCoreLib.Networking;
-using Newtonsoft.Json.Linq;
-using UnityEngine;
 
-// Attached to the Kiln building entity prefab
-public sealed class KilnController : MonoBehaviour
+// Example of a simple alert, broadcast to every player in the lobby upon call
+// Because netcode is hard, and the information on the left side might as well be moon runes :(
+public static class ShoutAlert
 {
-    private const string SetModeChannel = "glassworks.kiln.setmode";
-    private const string ModeChangedChannel = "glassworks.kiln.modechanged";
 
-    private string selectedMode = "idle";
-
-    private void Awake()
+    // Call this once from your plugin's Awake().
+    public static void Register()
     {
-        // Server receives requested changes, validates them, then tells everyone the accepted value.
-        MultiplayerApi.RegisterServerHandler(SetModeChannel, request =>
-        {
-            string requestedMode = request?.Value<string>("mode") ?? "idle";
-            string acceptedMode = IsAllowedMode(requestedMode) ? requestedMode : "idle";
-
-            ApplyMode(acceptedMode);
-
-            MultiplayerApi.Broadcast(
-                ModeChangedChannel,
-                new JObject { ["mode"] = acceptedMode },
-                includeHost: true
-            );
-
-            return new JObject
-            {
-                ["ok"] = true,
-                ["mode"] = acceptedMode
-            };
-        });
-
-        // Clients receive the accepted value and update their local machine script.
-        MultiplayerApi.RegisterClientHandler(ModeChangedChannel, payload =>
-        {
-            ApplyMode(payload?.Value<string>("mode") ?? "idle");
-        });
-
-        // If data needs to be constantly updated, consider a timer in Update() every few seconds that sends/requests the current value from the server, or broadcasting on change.
+        MultiplayerApi.RegisterHandler("mymod.shout", payload =>
+            CUCoreUtils.ShowAlert(payload?.Value<string>()));
     }
 
-    public void Button_SetMode(string requestedMode)
+    // Call this from a button, a console command, an item script, wherever.
+    // Host, client or solo: everyone in the lobby sees it, including you.
+    public static void Shout(string text)
     {
-        if (!MultiplayerApi.IsAvailable)
-        {
-            ApplyMode(requestedMode);
-            return;
-        }
-
-        if (MultiplayerApi.IsServer)
-        {
-            ApplyMode(requestedMode);
-            MultiplayerApi.Broadcast(
-                ModeChangedChannel,
-                new JObject { ["mode"] = selectedMode },
-                includeHost: false
-            );
-            return;
-        }
-
-        // The client asks, and the server then responds :)
-        MultiplayerApi.RequestServer(
-            SetModeChannel,
-            new JObject { ["mode"] = requestedMode },
-            response =>
-            {
-                bool ok = response?.Value<bool?>("ok") ?? false;
-                string acceptedMode = response?.Value<string>("mode") ?? "idle";
-
-                Debug.Log(ok
-                    ? "Kiln mode accepted: " + acceptedMode
-                    : "Kiln mode rejected.");
-            }
-        );
+        MultiplayerApi.BroadcastEverywhere("mymod.shout", text);
     }
 
-    private void ApplyMode(string mode)
+    // Or, have it only show to a certain client:
+    public static void ShoutTo(string text, uint clientId)
     {
-        selectedMode = IsAllowedMode(mode) ? mode : "idle";
-
-        // Update your real machine behavior here:
-        // sprite, loop audio, temperature target, some internal data, etc.
-        Debug.Log("Kiln mode is now " + selectedMode);
-    }
-
-    private static bool IsAllowedMode(string mode)
-    {
-        return string.Equals(mode, "idle", StringComparison.Ordinal) ||
-            string.Equals(mode, "anneal", StringComparison.Ordinal) ||
-            string.Equals(mode, "melt", StringComparison.Ordinal);
+        MultiplayerApi.BroadcastToPeer("mymod.shout", clientId, text);
     }
 }`;
 }

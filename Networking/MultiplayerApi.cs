@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using BepInEx.Bootstrap;
 using CUCoreLib.ContentReload;
 using CUCoreLib.Registries;
 using Newtonsoft.Json.Linq;
@@ -12,7 +14,28 @@ namespace CUCoreLib.Networking
         private const string CustomPlayerDataChannel = "cucorelib.playerdata.get";
         private const string CustomPlayerLimbDataChannel = "cucorelib.playerdata.limbs.get";
         private const string NetPlayerTypeName = "KrokoshaCasualtiesMP.NetPlayer";
+        private const string KrokMpPluginGuid = "KrokoshaCasualtiesMP";
 
+        // Just in case
+        // Aliases for krokMP, and eventual support for future MP mods (potentially)
+        private static readonly string[][] KrokMpMemberAliases =
+        {
+            new[] { "NetPlayer", "steam_id", "SteamId" },
+            new[] { "NetPlayer", "plrcolor", "playerColor" },
+            new[] { "NetPlayer", "additional_profile_tag_icons", "KnownUserTagIcons" }
+        };
+
+        private static readonly string[][] KrokMpTypeAliases =
+        {
+            new[] { "KrokoshaCasualtiesMP.KrokoshaCoopModAssets", "KrokoshaCasualtiesMP.CoopModAssets" },
+            new[] { "KrokoshaCasualtiesMP.FontUntils", "Together.FontUtils" },
+            new[] { "KrokoshaCasualtiesMP.HingeJointState", "Together.HingeJointState" },
+            new[] { "KrokoshaCasualtiesMP.StatePrinter", "Together.StatePrinter" }
+        };
+
+        private static readonly string[] KrokMpNamespaces = { "KrokoshaCasualtiesMP", "Together" };
+
+        private static Version _krokMpVersion;
         private static Type _netPlayerType;
         private static MethodInfo _tryGetNetPlayerAndBodyFromClientIdMethod;
         private static bool _playerDataHandlersRegistered;
@@ -22,6 +45,53 @@ namespace CUCoreLib.Networking
         public static bool IsClient => MultiplayerBridge.IsClient;
         public static bool IsServer => MultiplayerBridge.IsServer;
         public static bool IsHost => MultiplayerBridge.IsHost;
+
+        public static Version KrokMpVersion
+        {
+            get
+            {
+                if (_krokMpVersion != null) return _krokMpVersion;
+                if (Chainloader.PluginInfos.TryGetValue(KrokMpPluginGuid, out var info) && info?.Metadata != null)
+                    _krokMpVersion = info.Metadata.Version;
+                return _krokMpVersion;
+            }
+        }
+
+        public static Type ResolveKrokMpType(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return null;
+
+            foreach (var candidate in TypeCandidates(name.Trim()))
+            {
+                var type = ResolveLoadedType(candidate);
+                if (type != null) return type;
+            }
+
+            return null;
+        }
+        public static MemberInfo FindKrokMpMember(Type type, string name)
+        {
+            if (type == null || string.IsNullOrWhiteSpace(name)) return null;
+
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic |
+                                       BindingFlags.Instance | BindingFlags.Static;
+
+            foreach (var candidate in MemberCandidates(type.Name, name.Trim()))
+            {
+                var field = type.GetField(candidate, flags);
+                if (field != null) return field;
+
+                var property = type.GetProperty(candidate, flags);
+                if (property != null) return property;
+            }
+
+            return null;
+        }
+
+        public static MemberInfo FindKrokMpMember(string typeName, string name)
+        {
+            return FindKrokMpMember(ResolveKrokMpType(typeName), name);
+        }
 
         public static void RegisterServerHandler(string channel, Func<JToken, JToken> handler)
         {
@@ -37,7 +107,6 @@ namespace CUCoreLib.Networking
             MultiplayerBridge.RegisterClientHandler(channel, handler);
         }
 
-        /// <summary>Registers the same one-way event handler on clients and the server, without a response.</summary>
         public static void RegisterHandler(string channel, Action<JToken> handler)
         {
             if (handler == null) return;
@@ -51,7 +120,7 @@ namespace CUCoreLib.Networking
         }
 
         /// <summary>
-        /// Sends to the selected client when called on the server; otherwise sends to the server.
+        /// Sends to the selected client when called on the server, otherwise sends to the server.
         /// The target client ID is ignored on clients. Does not relay between clients or broadcast.
         /// </summary>
         public static bool SendToPeer(uint targetClientId, string channel, object payload = null, bool reliable = true)
@@ -232,6 +301,45 @@ namespace CUCoreLib.Networking
             return AppDomain.CurrentDomain.GetAssemblies()
                 .Select(assembly => assembly.GetType(fullName, false))
                 .FirstOrDefault(type => type != null);
+        }
+
+        private static IEnumerable<string> TypeCandidates(string name)
+        {
+            yield return name;
+
+            // Do people still use simple namespaces?
+            var simple = SimpleName(name);
+            foreach (var @namespace in KrokMpNamespaces)
+                yield return @namespace + "." + simple;
+
+            foreach (var group in KrokMpTypeAliases)
+            {
+                if (!group.Any(full => string.Equals(full, name, StringComparison.Ordinal) ||
+                                       string.Equals(SimpleName(full), simple, StringComparison.Ordinal)))
+                    continue;
+
+                foreach (var full in group) yield return full;
+            }
+        }
+
+        private static IEnumerable<string> MemberCandidates(string typeName, string name)
+        {
+            yield return name;
+
+            foreach (var group in KrokMpMemberAliases)
+            {
+                if (!string.Equals(group[0], typeName, StringComparison.Ordinal)) continue;
+                if (!group.Skip(1).Any(alias => string.Equals(alias, name, StringComparison.Ordinal))) continue;
+
+                foreach (var alias in group.Skip(1))
+                    if (!string.Equals(alias, name, StringComparison.Ordinal)) yield return alias;
+            }
+        }
+
+        private static string SimpleName(string fullName)
+        {
+            var index = fullName.LastIndexOf('.');
+            return index < 0 ? fullName : fullName.Substring(index + 1);
         }
     }
 }

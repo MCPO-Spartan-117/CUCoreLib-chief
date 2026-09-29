@@ -223,7 +223,7 @@ export const pages: Page[] = [
     label: "Multiplayer Sync",
     crumb: "Misc / API",
     title: "Multiplayer sync",
-    lead: "Experimental early automatic multiplayer sync for CUCoreLib"
+    lead: "KrokMP compatibility: automatic sync for registered content, plus a host-authoritative snapshot and message API."
   },
   {
     id: "console",
@@ -2446,19 +2446,43 @@ function multiplayerPage(): string {
   return `
     <section class="lesson-card">
       <h2>Wait, what?</h2>
-      <p>CUCoreLib has a soft compatibility layer for <span class="inline-code">KrokoshaCasualtiesMP</span>. That is, if KrokMP is not installed, nothing extra is loaded.</p>
-      <p>Custom items or buildings registered through CUCoreLib can be spawned by KrokMP using the same string ID it already sends over the network.</p>
-      <h3>This is experimental and subject to change!</h3><br>
-      <p>Due to the proposed overhaul of MP in its next major version (5.0.0), sync methods will be vastly different. As such, CUCoreLib's MP support is focused on backfill rather then being feature-complete.</p>
-      <p>In other words, it is more focused on making sure that your code will work after the update. </p>
-      </section>
-
+      <p>CUCoreLib has a soft compatibility layer for <span class="inline-code">Casualties: Together</span></p>
+      <p>This is split into two main sections:</p>
+      <ul>
+        <li><span class="inline-code">Content</span> - custom items, buildings, tiles and liquids you registered through CUCoreLib resolve over C:T's own object sync, so a peer can spawn your content, with all item data that exists inside CUCoreLib's registries.</li>
+        <li><span class="inline-code">State</span> - CUCoreLib runs its own host-authoritative snapshot on top of KrokMP's transport, plus a request and message API for your traffic.</li>
+      </ul>
+      <p>For registered content and registry-backed state you write no multiplayer code at all. Everything below is the part you must write with <span class="inline-code">(using) CUCoreLib.Networking.MultiplayerApi</span>.</p>
+    </section>
 
     <section class="lesson-card">
-      <h2>Setup for normal content</h2>
-      <p>For normal CUCoreLib registries, everything is automatic. All you need is the content (mod) with stable IDs on every machine.</p>
-      <p>CUCoreLib registers built-in shared snapshot modules during startup for <span class="inline-code">items</span>, <span class="inline-code">tiles</span>, <span class="inline-code">buildings</span>, <span class="inline-code">liquids</span>, <span class="inline-code">moodles</span>, and <span class="inline-code">settings</span>. Statuses synchronize separately to their owning client, so one player's effects never overwrite another's.</p>
-      <p>You do not need to add dedicated multiplayer support for these.</p>
+      <h2>How state moves</h2>
+      <p>KrokMP is host-authoritative, and so is CUCoreLib's sync layer. That is, the host owns the truth, and clients pull it:</p>
+      <ul>
+        <li>A connecting client requests the full snapshot once (<span class="inline-code">cucorelib.sync.snapshot</span>) and applies every module in it. If it lands while the client is not in a world, CUCoreLib caches it and replays it once you are in one.</li>
+      
+      </ul>
+    </section>
+
+    <section class="lesson-card">
+      <h2>What you get for free (automatically!)</h2>
+      <p>CUCoreLib registers its built-in snapshot modules during startup. Anything you put through the normal registries is already covered.</p>
+      <p>Note that the client does *not* need your mod (only CUCoreLib) for basic functionality, but will need it for any custom logic or content.</p>
+      <div class="table-wrap">
+        <table class="field-table">
+          <thead><tr><th>Module key</th><th>What crosses the wire</th></tr></thead>
+          <tbody>
+            <tr><td><span class="inline-code">items</span></td><td>Custom item definitions: e.g. names, descriptions, category, sprites, wearable flags, weight and condition behaviour.</td></tr>
+            <tr><td><span class="inline-code">liquids</span></td><td>Custom liquid definitions: e.g. colour, value per litre, injection and usability flags, crafting qualities.</td></tr>
+            <tr><td><span class="inline-code">lootpools</span></td><td>Loot pool contents and weights, so world loot matches the host.</td></tr>
+            <tr><td><span class="inline-code">tiles</span></td><td>Custom block definitions.</td></tr>
+            <tr><td><span class="inline-code">liquidtiles</span></td><td>Liquid tile definitions.</td></tr>
+            <tr><td><span class="inline-code">buildings</span></td><td>Custom building entity definitions.</td></tr>
+            <tr><td><span class="inline-code">moodles</span></td><td>Custom moodle definitions.</td></tr>
+            <tr><td><span class="inline-code">settings</span></td><td>Registered mod options and their values.</td></tr>
+          </tbody>
+        </table>
+      </div>
       <img src="images/mp-integration-ingame.png" alt="In-game screenshot of registered content working in multiplayer. Look, ma! No mp code." class="screenshot">
       <pre><code>ItemRegistry.Register("conicalFlask", flaskInfo, flaskSprite);
 // This will automatically have multiplayer support, alongside most custom fields ^
@@ -2467,13 +2491,52 @@ BuildingEntityRegistry.Register("SporeMine", new CustomBuildingEntityDefinition
     Name = "Spore mine",
     Sprite = sporeMineSprite,
     Components = new[] { typeof(SporeMineScript) }
-}); // Only custom scripts will not have multiplayer support</code></pre>
+}); // Every peer gets a spore mine.
+    // HOWEVER, its custom SporeMineScript logic is yours, and is not synced UNLESS both users have the mod that adds said spore mine.</code></pre>
+      <p>What is <em>not</em> automatic: your own <span class="inline-code">MonoBehaviour</span> logic, state you keep outside the registries, and anything you change after a peer pulled its snapshot. Those need a sync module or a message, below.</p>
+    </section>
+
+
+    <section class="lesson-card">
+      <h2>Messages and requests</h2>
+      <p>The public surface is <span class="inline-code">CUCoreLib.Networking.MultiplayerApi</span>, so a dependent mod never has to reflect into KrokMP internals. </p>
+      <p>You shouldn't be doing that regardless if you can help it, as you'd be needing to potentially update your mod per multiplayer update. (instead, delegate the work to me ;) )</p>
+      <p>Anyhow, non-abstracted payloads arrive as a <span class="inline-code">JToken</span>, and every send returns <span class="inline-code">false</span> instead of throwing when the bridge is not there. Channels are plain strings, compared case-sensitively, so do namespace them (<span class="inline-code">mymod.kiln.setmode</span>).</p>
+      <div class="table-wrap">
+        <table class="field-table">
+          <thead><tr><th>API</th><th>Use it for</th></tr></thead>
+          <tbody>
+            <tr><td><span class="inline-code">IsAvailable</span></td><td>Whether the CUCoreLib bridge found KrokMP and installed its receivers. False with no KrokMP, or on a build whose signatures it could not match.</td></tr>
+            <tr><td><span class="inline-code">IsRunning</span>, <span class="inline-code">IsClient</span>, <span class="inline-code">IsServer</span>, <span class="inline-code">IsHost</span></td><td>Role checks before server-only or client-only work.</td></tr>
+            <tr><td><span class="inline-code">KrokMpVersion</span></td><td>The installed KrokMP version, or <span class="inline-code">null</span> when it is not loaded.</td></tr>
+            <tr><td><span class="inline-code">RegisterServerHandler</span></td><td>Client-to-server traffic. Return a <span class="inline-code">JToken</span> to answer a request, or <span class="inline-code">null</span> for fire-and-forget events.</td></tr>
+            <tr><td><span class="inline-code">RegisterClientHandler</span></td><td>Server-to-client events.</td></tr>
+            <tr><td><span class="inline-code">RegisterHandler</span></td><td>The same one-way handler on clients <em>and</em> the server, no response.</td></tr>
+            <tr><td><span class="inline-code">SendToServer</span></td><td>Client one-way event to the host.</td></tr>
+            <tr><td><span class="inline-code">RequestServer</span></td><td>Client request with a response callback.</td></tr>
+            <tr><td><span class="inline-code">SendToClient</span></td><td>Server event to one client ID.</td></tr>
+            <tr><td><span class="inline-code">Broadcast</span></td><td>Server event to every client. The host is skipped unless <span class="inline-code">includeHost: true</span>.</td></tr>
+            <tr><td><span class="inline-code">BroadcastEverywhere</span></td><td>An event on <em>every</em> instance in the lobby, <em>including your own</em>, from any role - the host relays for clients. This is the one for "everyone sees this".</td></tr>
+            <tr><td><span class="inline-code">BroadcastToPeer</span></td><td>An event on <em>one</em> instance, whichever role you hold, including client to client through the host. An unknown client ID returns <span class="inline-code">false</span>.</td></tr>
+            <tr><td><span class="inline-code">SendToPeer</span></td><td>Sends to the chosen client when called on the server, and to the server when called on a client. Note: it never relays between clients! Use <span class="inline-code">BroadcastEverywhere</span> and <span class="inline-code">BroadcastToPeer</span> for that.</td></tr>
+            <tr><td><span class="inline-code">RegisterSyncModule</span></td><td>Your own durable state inside the shared snapshot.</td></tr>
+            <tr><td><span class="inline-code">CaptureSnapshot</span>, <span class="inline-code">ApplySnapshot</span></td><td>Build or consume a snapshot by hand.</td></tr>
+            <tr><td><span class="inline-code">BroadcastSnapshot</span></td><td>Host push of the current full snapshot to every client.</td></tr>
+            <tr><td><span class="inline-code">RequestInitialSnapshot</span></td><td>Client re-pull, when something changed that only otherwise lands on join.</td></tr>
+            <tr><td><span class="inline-code">GetCustomPlayerData</span>, <span class="inline-code">GetCustomPlayerLimbData</span></td><td>Server-side read of one player's custom body or limb statuses.</td></tr>
+            <tr><td><span class="inline-code">RequestCustomPlayerData</span>, <span class="inline-code">RequestCustomPlayerLimbData</span></td><td>The same, from a client.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Registration is startup-only. Register them from <span class="inline-code">Awake</span> like any other registry.</p>
     </section>
 
     <section class="lesson-card">
-      <h2>Simple request example</h2>
-      <p>A <span class="inline-code">JObject</span> is just a small JSON-style bundle of values. Use it when one side of multiplayer needs to ask the other side a question.</p>
-      <p>In this example, the client asks the server whether a feature is unlocked. The server sends back one value: <span class="inline-code">unlocked</span>.</p>
+      <h2>Using JObject</h2>
+      <p>A <span class="inline-code">JObject</span> is just a small JSON-style bundle of values. Use it when one side needs to ask the other side a question.</p>
+      <p>In this example the client asks whether a feature is unlocked, and the server sends back one value: <span class="inline-code">unlocked</span>.</p>
+      <p>This example is the most flexible form. For the majority of modders, using CUCoreLib's abstracted functions, as shown on the right side code pane, may be more convenient.</p>
+      
       <pre><code>using CUCoreLib.Networking;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -2512,13 +2575,14 @@ private void AskServerIfGlassworksIsUnlocked()
         }
     );
 }</code></pre>
-      <p><span class="inline-code">RegisterServerHandler</span> answers a question, <span class="inline-code">RequestServer</span> asks the question, and <span class="inline-code">JObject</span> is the note passed between them.</p>
+      <p><span class="inline-code">RegisterServerHandler</span> answers the question, <span class="inline-code">RequestServer</span> asks it, and <span class="inline-code">JObject</span> is the note passed between them.</p>
+      <p>For a machine whose mode the host decides, the same pair runs in reverse on the way back: the client requests a change, the server validates it, applies it, and <span class="inline-code">Broadcast</span>s the accepted value to everyone.</p>
     </section>
 
     <section class="lesson-card">
       <h2>Custom snapshot modules</h2>
-      <p>Use <span class="inline-code">MultiplayerApi.RegisterSyncModule</span> when your mod owns extra multiplayer state, such as discovered markers, machine recipes, per-world unlocks, or cached server decisions. A module has one capture callback and, optionally, one apply callback.</p>
-      <p>This may look familiar to the <span class="inline-code">Saving</span> API. Snapshots are sent over the network, instead of being written to the disk.</p>
+      <p>Use <span class="inline-code">MultiplayerApi.RegisterSyncModule</span> when your mod owns shared state that no registry covers: discovered markers, machine recipes, per-world unlocks, cached server decisions. A module is one capture callback and, optionally, one apply callback.</p>
+      <p>This should look familiar from the <a href="/docs/saving/" data-page="saving">Saving</a> API. It uses the same shape, except snapshots cross the network instead :)</p>
       <pre><code>using CUCoreLib.Networking;
 using Newtonsoft.Json.Linq;
 
@@ -2564,33 +2628,14 @@ private void ApplyMarkerSnapshot(JObject snapshot)
         );
     }
 }</code></pre>
+      
     </section>
 
     <section class="lesson-card">
-      <h2>Messages and requests</h2>
-      <p>Use messages for live actions, and snapshots for durable state. The public surface is <span class="inline-code">CUCoreLib.Networking.MultiplayerApi</span>, so dependent mods do not need to reflect into KrokMP internals.</p>
-      <p>These APIs may be lacking, apologies. Due to the situation of v4.0.0, some features may be limited for the time being.</p>
-      <div class="table-wrap">
-        <table class="field-table">
-          <thead><tr><th>API</th><th>Use it for</th></tr></thead>
-          <tbody>
-            <tr><td><span class="inline-code">IsAvailable</span></td><td>Whether the CUCoreLib bridge found KrokMP and installed its receivers.</td></tr>
-            <tr><td><span class="inline-code">IsRunning</span></td><td>Whether KrokMP reports an active multiplayer runtime.</td></tr>
-            <tr><td><span class="inline-code">IsClient</span>, <span class="inline-code">IsServer</span>, <span class="inline-code">IsHost</span></td><td>Role checks before sending server-only or client-only work.</td></tr>
-            <tr><td><span class="inline-code">RegisterServerHandler</span></td><td>Handle client-to-server requests/events for your channel.</td></tr>
-            <tr><td><span class="inline-code">RegisterClientHandler</span></td><td>Handle server-to-client events for your channel.</td></tr>
-            <tr><td><span class="inline-code">SendToServer</span></td><td>Fire-and-forget client event.</td></tr>
-            <tr><td><span class="inline-code">RequestServer</span></td><td>Client request with a server response callback.</td></tr>
-            <tr><td><span class="inline-code">SendToClient</span></td><td>Server event to one client ID.</td></tr>
-            <tr><td><span class="inline-code">Broadcast</span></td><td>Server event to all clients, optionally including host.</td></tr>
-            <tr><td><span class="inline-code">BroadcastSnapshot</span></td><td>Server resend of the current full CUCoreLib snapshot.</td></tr>
-          </tbody>
-        </table>
-      </div>
-      
-      <h3>Request custom player status data</h3>
-      <p>For body-status sync, use KrokMP's <span class="inline-code">clientId</span> to choose which player body to read. A <span class="inline-code">clientId</span> is the multiplayer player ID, not the player's display name.</p>
-      <p><span class="inline-code">GetCustomPlayerData</span> returns the saved custom <span class="inline-code">BodyStatus</span> payloads for that player's body. <span class="inline-code">GetCustomPlayerLimbData</span> returns custom <span class="inline-code">LimbStatus</span> payloads for that player's limbs.</p>
+      <h2>Statuses, per player</h2>
+      <p>Your own custom statuses already sync: every client asks the host for <em>its own</em> body snapshot once a second, and the host answers from the sender's body, so one player's effects can never overwrite another's. No code needed.</p>
+      <p>Reading somebody <em>else</em>'s statuses is a request. Use KrokMP's <span class="inline-code">clientId</span> to choose which player body to read - a <span class="inline-code">clientId</span> is the multiplayer player ID, not the display name.</p>
+      <p><span class="inline-code">GetCustomPlayerData</span> returns that player's custom <span class="inline-code">BodyStatus</span> payloads, <span class="inline-code">GetCustomPlayerLimbData</span> their custom <span class="inline-code">LimbStatus</span> payloads, and the <span class="inline-code">Request...</span> pair is the client-side version of the same read.</p>
       <pre><code>// Ask the server for one player's custom body statuses.
 MultiplayerApi.RequestCustomPlayerData(clientId, response =>
 {
@@ -2604,7 +2649,7 @@ MultiplayerApi.RequestCustomPlayerLimbData(clientId, response =>
     JArray limbStatuses = response?["limbs"] as JArray;
     Debug.Log("Limb status payloads: " + (limbStatuses?.Count ?? 0));
 });</code></pre>
-    </section>  
+    </section>
   `;
 }
 
@@ -3685,6 +3730,7 @@ function debugTestingPage(): string {
         <li>Open the multiplayer mod on two instances and swap from Steam to IP hosting.</li>
         <li>The name of the client and the host must be different.</li>
         <li>Connect on both, and you can test multiplayer interactions.</li>
+        <li>Make sure to use the game's executable (<span class="inline-code">CasualtiesUnknown.exe</span>) rather than Steam to launch the game.</li>
       </ul>
     </section>
 
@@ -3720,7 +3766,8 @@ function utilsPage(): string {
             <tr><td><span class="inline-code">CallWhen</span></td><td><span class="inline-code">Func&lt;bool&gt; condition, Action action, float checkRepeatTimeSeconds = 0f</span></td><td>Polls until the condition is true, then runs the action.</td></tr>
             <tr><td><span class="inline-code">AwaitMainMenu</span> / <span class="inline-code">awaitMainMenu</span></td><td><span class="inline-code">float checkRepeatTimeSeconds = 0f</span></td><td>Coroutine wait helper for the main menu becoming available.</td></tr>
             <tr><td><span class="inline-code">AwaitWorldGeneration</span> / <span class="inline-code">awaitWorldGeneration</span></td><td><span class="inline-code">float checkRepeatTimeSeconds = 0f</span></td><td>Coroutine wait helper for the runtime world finishing generation.</td></tr>
-            <tr><td><span class="inline-code">OnHeal</span></td><td><span class="inline-code">event Action</span></td><td>Runs subscribers after the <span class="inline-code">heal</span> console command heals a player. In KrokMP, it runs once on the host for the affected player.</td></tr>
+            <tr><td><span class="inline-code">OnHeal</span></td><td><span class="inline-code">event Action</span></td><td>Runs subscribers after the <span class="inline-code">heal</span> console command heals your player. Other players' heals do not reach it, use <span class="inline-code">OnHealPlayer</span> for those.</td></tr>
+            <tr><td><span class="inline-code">OnHealPlayer</span></td><td><span class="inline-code">event Action&lt;Body&gt;</span></td><td>Runs subscribers with the healed body for every player a heal reaches. In KrokMP that means the host sees each player a <span class="inline-code">heal [player]</span> covers.</td></tr>
             <tr><td><span class="inline-code">OnLastStand</span></td><td><span class="inline-code">event Action</span></td><td>Runs subscribers when a player successfully enters last stand. In KrokMP, it runs once on the host for the affected player.</td></tr>
             <tr><td><span class="inline-code">EventPlayer</span></td><td><span class="inline-code">Body</span></td><td>The affected player while either event callback is running; otherwise <span class="inline-code">null</span>. <span class="inline-code">GiveItem</span> automatically gives to this player.</td></tr>
             <tr><td><span class="inline-code">IsMainMenuReady</span></td><td>None</td><td>Returns whether the game is currently at a usable main-menu state.</td></tr>

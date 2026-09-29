@@ -2,7 +2,7 @@
   "version": "1.0",
   "library": "CUCoreLib",
   "description": "Machine-readable CUCoreLib web docs generated from the interactive docs sources.",
-  "generatedAt": "2026-09-20T05:06:39.466Z",
+  "generatedAt": "2026-09-28T02:21:22.857Z",
   "baseUrl": "/",
   "topics": [
     {
@@ -280,7 +280,7 @@
       "label": "Multiplayer Sync",
       "crumb": "Misc / API",
       "title": "Multiplayer sync",
-      "lead": "Experimental early automatic multiplayer sync for CUCoreLib",
+      "lead": "KrokMP compatibility: automatic sync for registered content, plus a host-authoritative snapshot and message API.",
       "appUrl": "/docs/multi-mod-compatibility/",
       "machineUrl": "/api/topics/multi-mod-compatibility.json"
     }
