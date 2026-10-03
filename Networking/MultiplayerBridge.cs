@@ -61,6 +61,8 @@ namespace CUCoreLib.Networking
         private static Assembly _krokAssembly;
         private static Type _mpType;
         private static Type _netType;
+        private static readonly Dictionary<string, PropertyInfo> NetBoolProperties =
+            new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
         private static Type _netModeType;
         private static Type _serverMainType;
         private static Type _clientMainType;
@@ -784,6 +786,7 @@ namespace CUCoreLib.Networking
 
             _mpType = _krokAssembly.GetType(MpTypeName, false);
             _netType = _krokAssembly.GetType(NetTypeName, false);
+            NetBoolProperties.Clear();
             _netModeType = _krokAssembly.GetType(NetTypeEnumName, false);
             _serverMainType = _krokAssembly.GetType(ServerMainTypeName, false);
             _clientMainType = _krokAssembly.GetType(ClientMainTypeName, false);
@@ -1046,8 +1049,12 @@ namespace CUCoreLib.Networking
         {
             if (_netType == null) return false;
 
-            var property = _netType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static);
-            if (property == null || property.PropertyType != typeof(bool)) return false;
+            if (!NetBoolProperties.TryGetValue(memberName, out var property))
+            {
+                property = _netType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static);
+                if (property == null || property.PropertyType != typeof(bool)) return false;
+                NetBoolProperties[memberName] = property;
+            }
 
             return GetStaticBool(property);
         }

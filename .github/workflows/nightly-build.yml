@@ -77,6 +77,24 @@ jobs:
           path: obj\Release\CUCoreLib.dll
           if-no-files-found: error
 
+      - name: Resolve nightly release tag
+        shell: powershell
+        run: |
+          # This cannot be good practice
+          $match = Select-String -Path 'CUCoreLib.cs' -Pattern 'const string VERSION = "([^"]+)"' |
+              Select-Object -First 1
+
+          if (-not $match)
+          {
+              throw "Could not resolve VERSION from CUCoreLib.cs."
+          }
+
+          $version = $match.Matches[0].Groups[1].Value
+
+          "NIGHTLY_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "NIGHTLY_TAG=nightly-v$version-alpha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Resolved nightly tag to nightly-v$version-alpha"
+
       - name: Prepare nightly release description
         shell: powershell
         run: |
@@ -108,7 +126,7 @@ jobs:
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nightly
+          tag_name: ${{ env.NIGHTLY_TAG }}
           name: Nightly Build
           prerelease: true
           make_latest: false
@@ -124,7 +142,7 @@ jobs:
             const release = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag: 'nightly'
+              tag: '${{ env.NIGHTLY_TAG }}'
             });
 
             for (const asset of release.data.assets) {
@@ -145,7 +163,7 @@ jobs:
             const release = await github.rest.repos.getReleaseByTag({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag: 'nightly'
+              tag: '${{ env.NIGHTLY_TAG }}'
             });
 
             // GitHub preserves published_at when an existing release is edited.

@@ -650,7 +650,6 @@ namespace CUCoreLib.Helpers
 
         /// <summary>
         /// Updates the registered worn sprite for a custom item and refreshes every live instance with the same item ID.
-        /// Pass <c>null</c> to clear the custom worn sprite and fall back to the normal icon while worn.
         /// </summary>
         /// <param name="itemId">Registered custom item id to update.</param>
         /// <param name="wornSprite">Sprite to use while the item is worn.</param>
@@ -669,7 +668,7 @@ namespace CUCoreLib.Helpers
 
         /// <summary>
         /// Updates the registered worn sprite for the item's ID and refreshes every live instance with that same item ID.
-        /// Pass <c>null</c> to clear the custom worn sprite and fall back to the normal icon while worn.
+        /// Pass <c>null</c> to clear the custom worn sprite; a wearable with no other worn sprites then goes invisible.
         /// </summary>
         /// <param name="item">Any live item instance whose registered custom item should be updated.</param>
         /// <param name="wornSprite">Sprite to use while the item is worn.</param>
