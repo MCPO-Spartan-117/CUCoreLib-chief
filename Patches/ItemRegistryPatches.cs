@@ -573,13 +573,14 @@ namespace CUCoreLib.Patches
                 lightObject.transform.localRotation = Quaternion.identity;
                 lightObject.transform.localScale = Vector3.one;
                 light = lightObject.GetComponent<Light2D>();
+                light.enabled = properties.enabled;
             }
 
             ApplyLightProperties(light, properties);
 
             if (lightItem == null) return;
             lightItem.light = light;
-            lightItem.shouldEnable = true;
+            lightItem.shouldEnable = properties.enabled;
         }
 
         /// <summary>
@@ -597,6 +598,10 @@ namespace CUCoreLib.Patches
             light.intensity = properties.Intensity;
             light.color = properties.Color;
             light.falloffIntensity = properties.FalloffIntensity;
+            if(properties.volumeIntensity != null) {
+                light.volumeIntensity = (float)properties.volumeIntensity;
+                light.volumeIntensityEnabled = true;
+            }
             light.pointLightOuterRadius = properties.PointLightOuterRadius;
             light.pointLightInnerRadius = properties.PointLightInnerRadius;
             light.pointLightOuterAngle = properties.PointLightOuterAngle;

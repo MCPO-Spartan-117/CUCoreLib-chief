@@ -507,6 +507,15 @@ namespace CUCoreLib.Data
         public float FalloffIntensity = 0.5f;
 
         /// <summary>
+        /// How much the light simulates passing through air, null disables volumetric lighting.
+        /// </summary>
+        /// <remarks>
+        /// Area lights: null<br/>
+        /// Flashlights: 0.03f
+        /// </remarks>
+        public float? volumeIntensity = null;
+
+        /// <summary>
         /// Outer radius for point/2D light falloff.
         /// </summary>
         /// <remarks>
@@ -552,6 +561,11 @@ namespace CUCoreLib.Data
         /// Local offset applied to the spawned light.
         /// </summary>
         public Vector2 Offset = Vector2.zero;
+
+        /// <summary>
+        /// Whether or not the item starts lit.
+        /// </summary>
+        public bool enabled = true;
 
         /**
             *<summary>
