@@ -160,6 +160,42 @@ namespace CUCoreLib.Patches
             return Mathf.Lerp(current, target + BodyFormulaData.Sum(data.BloodPressure), t);
         }
 
+        [HarmonyPatch(typeof(Body), "get_" + nameof(Body.actualMaxSpeed))]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> MaxSpeedAdd(IEnumerable<CodeInstruction> instructions, ILGenerator ILGen) {
+            List<int> fieldlist = new List<int>();
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            FieldInfo BodymaxSpeed = AccessTools.Field(typeof(Body), nameof(Body.maxSpeed));
+            for (int i = codes.Count - 1; i >= 0; i--) {
+                if (codes[i].LoadsField(BodymaxSpeed)) {
+                    fieldlist.Add(i);
+                }
+            }
+
+            if (fieldlist.Count != 0) {
+                LocalBuilder maxSpeedvar = ILGen.DeclareLocal(typeof(float));
+                List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                    new CodeInstruction(Ldarg_0),
+                    LoadField(typeof(Body), nameof(Body.maxSpeed)),
+                    new CodeInstruction(Ldarg_0),
+                    Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                    LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.MaxSpeed)),
+                    Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                    new CodeInstruction(Add),
+                    new CodeInstruction(Stloc, maxSpeedvar)
+                };
+
+                foreach(int index in fieldlist) {
+                    codes[index] = new CodeInstruction(Ldloc, maxSpeedvar);
+                    codes.RemoveAt(index - 1);
+                }
+
+                codes.InsertRange(0, callfunct);
+            }
+
+            return (IEnumerable<CodeInstruction>)codes;
+        }
+
         [HarmonyPatch(typeof(Body), "get_" + nameof(Body.actualJumpSpeed))]
         [HarmonyTranspiler]
         public static IEnumerable<CodeInstruction> JumpSpeedAdd(IEnumerable<CodeInstruction> instructions) {
