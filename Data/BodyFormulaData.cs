@@ -17,9 +17,6 @@ namespace CUCoreLib.Data
         public Dictionary<string, float> AveragePain = new Dictionary<string, float>();
 
         [JsonIgnore]
-        public float AppliedJumpSpeedContribution;
-
-        [JsonIgnore]
         public float AppliedAveragePainContribution;
 
         [JsonIgnore]

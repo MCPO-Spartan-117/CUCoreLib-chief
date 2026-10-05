@@ -74,11 +74,7 @@ namespace CUCoreLib.Helpers
         public static float JumpSpeed
         {
             get => GetValue(data => data.JumpSpeed);
-            set
-            {
-                SetValue(value, data => data.JumpSpeed);
-                BodyFormulaPatches.ApplyJumpSpeedContribution(GetBody());
-            }
+            set => SetValue(value, data => data.JumpSpeed);
         }
 
         public static float AveragePain

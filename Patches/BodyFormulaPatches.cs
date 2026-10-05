@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using static System.Reflection.Emit.OpCodes;
 using CUCoreLib.Data;
 using CUCoreLib.Helpers;
 using HarmonyLib;
+using static HarmonyLib.CodeInstruction;
 using UnityEngine;
 
 namespace CUCoreLib.Patches
@@ -111,13 +113,6 @@ namespace CUCoreLib.Patches
             }
         }
 
-        [HarmonyPatch(typeof(Body), "Start")]
-        [HarmonyPostfix]
-        private static void Start_Postfix(Body __instance)
-        {
-            ApplyJumpSpeedContribution(__instance);
-        }
-
         private static IEnumerable<CodeInstruction> ReplaceBodyFieldStores(
             IEnumerable<CodeInstruction> instructions,
             IReadOnlyDictionary<string, MethodInfo> replacements)
@@ -165,19 +160,31 @@ namespace CUCoreLib.Patches
             return Mathf.Lerp(current, target + BodyFormulaData.Sum(data.BloodPressure), t);
         }
 
-        internal static void ApplyJumpSpeedContribution(Body body)
-        {
-            if (body == null)
-            {
-                return;
+        [HarmonyPatch(typeof(Body), "get_" + nameof(Body.actualJumpSpeed))]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> JumpSpeedAdd(IEnumerable<CodeInstruction> instructions) {
+            var methodidx = -1;
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            FieldInfo BodyjumpSpeed = AccessTools.Field(typeof(Body), nameof(Body.jumpSpeed));
+            for (var i = 0; i < codes.Count; i++) {
+                if (codes[i].LoadsField(BodyjumpSpeed)) {
+                    methodidx = i;
+                    break;
+                }
             }
 
-            BodyFormulaData data = body.GetBodyFormulaData();
-            float contribution = BodyFormulaData.Sum(data.JumpSpeed);
-            float previousContribution = data.AppliedJumpSpeedContribution;
+            if (methodidx != -1) {
+                List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                    new CodeInstruction(Ldarg_0),
+                    Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                    LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.JumpSpeed)),
+                    Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                    new CodeInstruction(Add)
+                };
+                codes.InsertRange(methodidx + 1, callfunct);
+            }
 
-            body.jumpSpeed = Mathf.Max(0f, body.jumpSpeed - previousContribution + contribution);
-            data.AppliedJumpSpeedContribution = contribution;
+            return (IEnumerable<CodeInstruction>)codes;
         }
 
         private static void ApplyAveragePainContribution(Body body)
