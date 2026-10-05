@@ -486,6 +486,9 @@ namespace CUCoreLib.Data
         /// <summary>
         /// Light intensity.
         /// </summary>
+        /// <remarks>
+        /// Flashlight: 1f
+        /// </remarks>
         public float Intensity = 0.75f;
 
         /// <summary>
@@ -497,26 +500,42 @@ namespace CUCoreLib.Data
         /// Controls radial falloff for the light, including point/cone lights. 0 is sharp and 1 is soft.
         /// For cone-edge softness, set PointLightInnerAngle below PointLightOuterAngle.
         /// </summary>
+        /// <remarks>
+        /// Area lights: 0.8-0.95f<br/>
+        /// Flashlight: 0.5f
+        /// </remarks>
         public float FalloffIntensity = 0.5f;
 
         /// <summary>
         /// Outer radius for point/2D light falloff.
         /// </summary>
+        /// <remarks>
+        /// Flashlight: 50f
+        /// </remarks>
         public float PointLightOuterRadius = 7.5f;
 
         /// <summary>
         /// Inner radius for point/2D light falloff.
         /// </summary>
+        /// <remarks>
+        /// Flashlight: 0f
+        /// </remarks>
         public float PointLightInnerRadius;
 
         /// <summary>
         /// Outer cone angle for point lights.
         /// </summary>
+        /// <remarks>
+        /// Flashlight: 107.41065f
+        /// </remarks>
         public float PointLightOuterAngle = 360f;
 
         /// <summary>
         /// Inner cone angle for point lights.
         /// </summary>
+        /// <remarks>
+        /// Flashlight: 43.101143f
+        /// </remarks>
         public float PointLightInnerAngle = 360f;
 
         /// <summary>
@@ -534,9 +553,23 @@ namespace CUCoreLib.Data
         /// </summary>
         public Vector2 Offset = Vector2.zero;
 
-        /// <summary>
-        /// Whether a light item helper component should be added automatically.
-        /// </summary>
+        /**
+            *<summary>
+            *Whether a light item helper component should be added automatically,
+            *</summary>
+            *<remarks>
+            *<![CDATA[
+            *To fetch the Light2D:
+            *both:
+            *    item.transform.Find("CustomLight").GetComponent<Light2D>()
+            *    item.GetCompontentsInChildren<Light2D>()
+            *    item.transform.GetChild(0).GetComponent<Light2D>() //unsafe
+            *
+            *true:
+            *    item.GetComponent<LightItem>().light
+            *]]>
+            *</remarks>
+        */
         public bool AddLightItem = true;
     }
 
