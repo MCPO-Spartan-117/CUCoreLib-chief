@@ -155,7 +155,7 @@ namespace CUCoreLib.Patches
             return __exception;
         }
 
-        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false)
+        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false, bool pickup = false)
         {
             if (item == null || string.IsNullOrWhiteSpace(item.id))
                 return;
@@ -165,11 +165,14 @@ namespace CUCoreLib.Patches
 
             var shouldPreferWornSprite = preferWornSprite || IsCurrentlyWornWearable(item, def);
 
-            ItemRegistry.EnsureRuntimeCustomDataState(item, out _);
             ApplyCustomItemVisuals(item, def, shouldPreferWornSprite);
-            ApplyCustomItemComponents(item, def);
-            ApplyCustomSpawnComponents(item, def);
             ApplyCustomHeldOffset(item, def);
+
+            if(!pickup) {
+                ItemRegistry.EnsureRuntimeCustomDataState(item, out _);
+                ApplyCustomItemComponents(item, def);
+                ApplyCustomSpawnComponents(item, def);
+            }
         }
 
         internal static void RefreshLiveInstances(IEnumerable<string> itemIds = null)
@@ -759,13 +762,6 @@ namespace CUCoreLib.Patches
             item.condition = Mathf.Clamp01(startCharge / Mathf.Max(1f, maxCharge));
         }
 
-        [HarmonyPatch(typeof(Body), "PickUpItem")]
-        [HarmonyPostfix]
-        private static void ApplyCustomScaleAfterPickup(Item item)
-        {
-            ApplyCustomItemRuntime(item);
-        }
-
         [HarmonyPatch(typeof(Body), "AutoPickUpItem")]
         [HarmonyPrefix]
         private static void ApplyCustomRuntimeBeforeAutoPickup(Item item)
@@ -780,11 +776,12 @@ namespace CUCoreLib.Patches
             ResetCustomHeldOffset(item);
         }
 
+        [HarmonyPatch(typeof(Body), "PickUpItem")]
         [HarmonyPatch(typeof(Body), "DropItem", typeof(Item))]
         [HarmonyPostfix]
-        private static void ApplyCustomScaleAfterDrop(Item item)
+        private static void ApplyCustomScale(Item item)
         {
-            ApplyCustomItemRuntime(item);
+            ApplyCustomItemRuntime(item, pickup: true);
         }
 
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
