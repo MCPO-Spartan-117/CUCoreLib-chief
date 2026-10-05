@@ -825,9 +825,24 @@ namespace CUCoreLib.Patches
         }
 
         [HarmonyPatch(typeof(LightItem), "Start")]
-        [HarmonyPostfix]
-        private static void FindCustomLightAfterStart(LightItem __instance)
+        [HarmonyPrefix]
+        private static void LogEnabled(LightItem __instance, out bool? __state)
         {
+            if(__instance.transform.Find("CustomLight") != null) {
+                __state = __instance.shouldEnable;
+            } else {
+                __state = null;
+            }
+        }
+
+        [HarmonyPatch(typeof(LightItem), "Start")]
+        [HarmonyPostfix]
+        private static void FindCustomLightAfterStart(LightItem __instance, bool? __state)
+        {
+            if(__state != null) {
+                __instance.shouldEnable = (bool)__state;
+            }
+
             if (__instance == null || __instance.light != null) return;
 
             __instance.light = __instance.GetComponentInChildren<Light2D>();
