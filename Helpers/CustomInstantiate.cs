@@ -93,7 +93,7 @@ namespace CUCoreLib.Helpers
             }
 
             if (!condition.HasValue) return obj;
-            if (item) item.condition = condition.Value;
+            if (item) item.SetCondition(condition.Value);
 
             return obj;
         }

@@ -130,9 +130,19 @@ namespace CUCoreLib.Registries
             return SpawnLayerMask.FromLayerNumber(layerNumber);
         }
 
+        public static int LayersToMask(int layerNumber)
+        {
+            return SpawnLayerMask.FromLayerNumber(layerNumber);
+        }
+
         public static int LayersToMask(params int[] layerNumbers)
         {
             return SpawnLayerMask.Combine(layerNumbers);
+        }
+
+        public static int AllLayersExcept(int excludedLayerNumber)
+        {
+            return SpawnLayerMask.Excluding(new[] { excludedLayerNumber });
         }
 
         public static int AllLayersExcept(params int[] excludedLayerNumbers)

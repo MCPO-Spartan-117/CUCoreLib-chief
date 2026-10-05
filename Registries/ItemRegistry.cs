@@ -816,6 +816,13 @@ namespace CUCoreLib.Registries
         {
             if (info == null || IsValidIcon(info.Icon)) return;
 
+            var animation = AssetLoader.GetCachedSpriteAnimation(info.IconAnimationId);
+            if (animation?.Frames != null && animation.Frames.Length > 0 && IsValidIcon(animation.Frames[0]))
+            {
+                info.Icon = animation.Frames[0];
+                return;
+            }
+
             info.Icon = GetMissingItemIcon();
         }
 

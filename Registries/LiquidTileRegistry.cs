@@ -53,6 +53,31 @@ namespace CUCoreLib.Registries
 
         public static int AllSpawnLayersMask => SpawnLayerMask.All;
 
+        public static int LayerToMask(int layerNumber)
+        {
+            return SpawnLayerMask.FromLayerNumber(layerNumber);
+        }
+
+        public static int LayersToMask(int layerNumber)
+        {
+            return SpawnLayerMask.FromLayerNumber(layerNumber);
+        }
+
+        public static int LayersToMask(params int[] layerNumbers)
+        {
+            return SpawnLayerMask.Combine(layerNumbers);
+        }
+
+        public static int AllLayersExcept(int excludedLayerNumber)
+        {
+            return SpawnLayerMask.Excluding(new[] { excludedLayerNumber });
+        }
+
+        public static int AllLayersExcept(params int[] excludedLayerNumbers)
+        {
+            return SpawnLayerMask.Excluding(excludedLayerNumbers);
+        }
+
         public static void Register(string id, CustomLiquidTileInfo info)
         {
             ContentReloadSession.AssertNotActive("LiquidTileRegistry.Register()",

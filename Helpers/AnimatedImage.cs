@@ -13,6 +13,8 @@ namespace CUCoreLib.Helpers
 
         public string AnimationId { get; private set; }
 
+        public RegisteredSpriteAnimation Animation => _animation;
+
         private void Awake()
         {
             _image = GetComponent<Image>();

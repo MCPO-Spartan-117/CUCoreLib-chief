@@ -811,15 +811,27 @@ namespace CUCoreLib.Patches
             if (__instance == null || __instance.itemImg == null) return;
 
             var item = __instance.GetItem();
-            if (!ItemRegistry.TryGetCustomInfo(item, out var def)) return;
+            if (ItemRegistry.TryGetCustomInfo(item, out var def))
+            {
+                var sprite = GetInventorySprite(item, def);
 
-            var sprite = GetInventorySprite(item, def);
-            if (sprite == null) return;
+                // UpdateGraphic runs every frame, gotta stop that
+                var animated = !string.IsNullOrWhiteSpace(def.IconAnimationId) &&
+                               !TryGetRuntimeIconOverride(item, out _) &&
+                               AssetLoader.TryApplyAnimation(__instance.itemImg, def.IconAnimationId);
 
-            __instance.itemImg.sprite = sprite;
-            __instance.itemImg.rectTransform.sizeDelta =
-                PlayerCamera.ImageSizeDelta(sprite.texture, 3f, __instance.maxImageSize) *
-                ResolveInventoryIconScale(item, def);
+                if (sprite != null)
+                {
+                    if (!animated) __instance.itemImg.sprite = sprite;
+                    __instance.itemImg.rectTransform.sizeDelta =
+                        PlayerCamera.ImageSizeDelta(sprite.texture, 3f, __instance.maxImageSize) *
+                        ResolveInventoryIconScale(item, def);
+                }
+
+                if (animated) return;
+            }
+            var player = __instance.itemImg.GetComponent<AnimatedImage>();
+            if (player != null) Object.Destroy(player);
         }
 
         [HarmonyPatch(typeof(LightItem), "Start")]

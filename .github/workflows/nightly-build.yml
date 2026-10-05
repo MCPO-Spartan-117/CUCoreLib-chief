@@ -132,7 +132,9 @@ jobs:
           make_latest: false
           generate_release_notes: false
           body_path: ${{ runner.temp }}\CUCoreLib-nightly-release.md
-          files: obj\Release\CUCoreLib.dll
+          files: |
+            obj\Release\CUCoreLib.dll
+            bin\Release\CUCoreLib.xml
 
       - name: Remove legacy nightly release assets
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
@@ -145,8 +147,10 @@ jobs:
               tag: '${{ env.NIGHTLY_TAG }}'
             });
 
+            const keepAssets = ['CUCoreLib.dll', 'CUCoreLib.xml'];
+
             for (const asset of release.data.assets) {
-              if (asset.name !== 'CUCoreLib.dll') {
+              if (!keepAssets.includes(asset.name)) {
                 await github.rest.repos.deleteReleaseAsset({
                   owner: context.repo.owner,
                   repo: context.repo.repo,

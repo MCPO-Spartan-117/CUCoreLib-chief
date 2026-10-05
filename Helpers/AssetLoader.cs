@@ -785,6 +785,8 @@ namespace CUCoreLib.Helpers
 
             var player = image.GetComponent<AnimatedImage>();
             if (player == null) player = image.gameObject.AddComponent<AnimatedImage>();
+            
+            if (player.AnimationId == animationId && player.Animation == animation) return true;
 
             player.SetAnimation(animationId, animation);
             return true;

@@ -155,26 +155,18 @@ namespace CUCoreLib.Registries
 
         private static void RegisterLocale(ModOptionDefinition option)
         {
-            LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Option, option.Id, option.Label);
             LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Other, "gameset" + option.Id, option.Label);
             if (!string.IsNullOrWhiteSpace(option.Description))
             {
-                LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Option, option.Id + "dsc",
-                    option.Description);
                 LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Other, "gameset" + option.Id + "dsc",
                     option.Description);
             }
-            // todo I really need to figure this out
-            // man this is kinda ass ngl
+
             if (option.Kind != ModOptionKind.Dropdown || option.Choices == null) return;
 
             foreach (var choice in option.Choices)
-            {
-                LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Option, option.Id + choice.Key,
-                    choice.Label);
                 LocaleRegistry.Register(LocaleRegistry.LocaleCategory.Other, "gameset" + option.Id + choice.Key,
                     choice.Label);
-            }
         }
 
         internal static JObject CaptureNetworkSnapshot()
