@@ -601,6 +601,8 @@ namespace CUCoreLib.Patches
             if(properties.VolumeIntensity != null) {
                 light.volumeIntensity = (float)properties.VolumeIntensity;
                 light.volumeIntensityEnabled = true;
+            } else {
+                light.volumeIntensityEnabled = false;
             }
             light.pointLightOuterRadius = properties.PointLightOuterRadius;
             light.pointLightInnerRadius = properties.PointLightInnerRadius;
