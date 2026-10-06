@@ -35,7 +35,7 @@ namespace CUCoreLib.Bootstrap
                 if (!wasEnabled) return;
 
             }
-            catch (Exception ex)
+            catch
             {
             }
         }
