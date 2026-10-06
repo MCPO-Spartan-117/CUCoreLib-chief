@@ -30,7 +30,6 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - Custom buildings (and items) no longer stick around between scene changes in certain cases. This shouldn't (?) break your mods, but do tell me if it does
 - Dropped the KrokMP v3 compat backfill, surely there's no one using v3 nowadays
 - Custom building and custom liquid save data now carries the layer it was captured on (for saving + loading, in case the layer changes)
-- Null `WornSprite`s now resolve properly as invisible (sprite)
 
 ### Fixes
 - `EnableHotReload` warns instead of throws when it can't see `Awake()`

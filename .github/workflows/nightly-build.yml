@@ -68,7 +68,7 @@ jobs:
       - name: Build
         shell: powershell
         run: |
-          msbuild 'CUCoreLib.csproj' /t:Compile /p:Configuration=Release /p:Platform=AnyCPU /p:BepInExDir=
+          msbuild 'CUCoreLib.csproj' /t:Build /p:Configuration=Release /p:Platform=AnyCPU /p:BepInExDir=
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

@@ -301,7 +301,6 @@
     </ItemGroup>
     <ItemGroup>
         <EmbeddedResource Include="Data\MissingItem.png" />
-        <EmbeddedResource Include="Data\Empty.png" />
         <None Include="Helpers\app.config"/>
     </ItemGroup>
     <ItemGroup>

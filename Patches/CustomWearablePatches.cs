@@ -323,6 +323,7 @@ namespace CUCoreLib.Patches
         private static void EnsureWearableComponent(Item item, CustomItemInfo def)
         {
             if (item == null || def == null || !def.wearable) return;
+            if (def.WornSprite == null && (def.MultiWornSprites == null || def.MultiWornSprites.Count == 0)) return;
             if (item.GetComponent<Wearable>() != null) return;
 
             item.gameObject.AddComponent<Wearable>();
