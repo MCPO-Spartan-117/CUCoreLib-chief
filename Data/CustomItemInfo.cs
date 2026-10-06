@@ -513,7 +513,7 @@ namespace CUCoreLib.Data
         /// Area lights: null<br/>
         /// Flashlights: 0.03f
         /// </remarks>
-        public float? volumeIntensity = null;
+        public float? VolumeIntensity = null;
 
         /// <summary>
         /// Outer radius for point/2D light falloff.
@@ -565,7 +565,7 @@ namespace CUCoreLib.Data
         /// <summary>
         /// Whether or not the item starts lit.
         /// </summary>
-        public bool enabled = true;
+        public bool Enabled = true;
 
         /**
             *<summary>
