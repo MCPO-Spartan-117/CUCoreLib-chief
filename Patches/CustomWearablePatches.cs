@@ -61,14 +61,14 @@ namespace CUCoreLib.Patches
                 if (__state && icon != null)
                     ApplySprite(item, icon);
 
-                ItemRegistryPatches.ApplyCustomItemRuntime(item);
+                ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
                 return;
             }
 
             if (__state)
                 ApplyPrimaryWornVisualState(item, def);
 
-            ItemRegistryPatches.ApplyCustomItemRuntime(item, true);
+            ItemRegistryPatches.ApplyCustomItemRuntime(item, true, true);
         }
 
         [HarmonyPatch(typeof(Body), "DropWearable")]
@@ -89,7 +89,7 @@ namespace CUCoreLib.Patches
 
             var icon = ItemRegistry.GetIcon(def);
             if (icon != null) ApplySprite(item, icon);
-            ItemRegistryPatches.ApplyCustomItemRuntime(item);
+            ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Body), "PickUpItem")]
@@ -143,7 +143,7 @@ namespace CUCoreLib.Patches
             if (icon != null)
                 ApplySprite(item, icon);
 
-            ItemRegistryPatches.ApplyCustomItemRuntime(item);
+            ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Wearable), "CreateSprites")]
