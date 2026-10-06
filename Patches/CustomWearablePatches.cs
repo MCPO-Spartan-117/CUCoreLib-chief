@@ -61,7 +61,7 @@ namespace CUCoreLib.Patches
                 if (__state && icon != null)
                     ApplySprite(item, icon);
 
-                ItemRegistryPatches.ApplyCustomItemRuntime(item, pickup: true);
+                ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
                 return;
             }
 
@@ -89,7 +89,7 @@ namespace CUCoreLib.Patches
 
             var icon = ItemRegistry.GetIcon(def);
             if (icon != null) ApplySprite(item, icon);
-            ItemRegistryPatches.ApplyCustomItemRuntime(item, pickup: true);
+            ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Body), "PickUpItem")]
@@ -143,7 +143,7 @@ namespace CUCoreLib.Patches
             if (icon != null)
                 ApplySprite(item, icon);
 
-            ItemRegistryPatches.ApplyCustomItemRuntime(item, pickup: true);
+            ItemRegistryPatches.ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Wearable), "CreateSprites")]

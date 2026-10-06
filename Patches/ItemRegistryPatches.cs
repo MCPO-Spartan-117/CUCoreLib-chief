@@ -155,7 +155,7 @@ namespace CUCoreLib.Patches
             return __exception;
         }
 
-        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false, bool pickup = false)
+        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false, bool visualonly = false)
         {
             if (item == null || string.IsNullOrWhiteSpace(item.id))
                 return;
@@ -168,7 +168,7 @@ namespace CUCoreLib.Patches
             ApplyCustomItemVisuals(item, def, shouldPreferWornSprite);
             ApplyCustomHeldOffset(item, def);
 
-            if(!pickup) {
+            if(!visualonly) {
                 ItemRegistry.EnsureRuntimeCustomDataState(item, out _);
                 ApplyCustomItemComponents(item, def);
                 ApplyCustomSpawnComponents(item, def);
@@ -788,7 +788,7 @@ namespace CUCoreLib.Patches
         [HarmonyPostfix]
         private static void ApplyCustomScale(Item item)
         {
-            ApplyCustomItemRuntime(item, pickup: true);
+            ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
