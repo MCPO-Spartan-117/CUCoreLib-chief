@@ -567,23 +567,26 @@ namespace CUCoreLib.Data
         /// </summary>
         public bool Enabled = true;
 
-        /**
-            *<summary>
-            *Whether a light item helper component should be added automatically,
-            *</summary>
-            *<remarks>
-            *<![CDATA[
-            *To fetch the Light2D:
-            *both:
-            *    item.transform.Find("CustomLight").GetComponent<Light2D>()
-            *    item.GetCompontentsInChildren<Light2D>()
-            *    item.transform.GetChild(0).GetComponent<Light2D>() //unsafe
-            *
-            *true:
-            *    item.GetComponent<LightItem>().light
-            *]]>
-            *</remarks>
-        */
+        /// <summary>
+        /// Whether a light item helper component should be added automatically.
+        /// </summary>
+        /// <remarks>
+        /// <![CDATA[
+        /// Reaching the Light2D on a registered item:
+        ///
+        ///   Always works:
+        ///     item.GetComponentsInChildren<Light2D>()
+        ///
+        ///   Only when AddLightItem is true:
+        ///     item.GetComponent<LightItem>().light
+        ///
+        ///   Only when CUCoreLib created the light itself (see Enabled):
+        ///     item.transform.Find("CustomLight").GetComponent<Light2D>()
+        ///
+        ///   Unsafe, template dependent:
+        ///     item.transform.GetChild(0).GetComponent<Light2D>()
+        /// ]]>
+        /// </remarks>
         public bool AddLightItem = true;
     }
 

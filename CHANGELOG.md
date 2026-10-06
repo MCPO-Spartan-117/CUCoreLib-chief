@@ -40,9 +40,10 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - ""Fixed"" large amounts of data being truncated when sending over multiplayer requests
 - Fixed `AddRigidbody2D` (t'was a layer issue)
 - Fixed modded buildingEntites ignoring locale overlays for buildingEntites
-- Fixed modded setting tabs (UI) and refreshing for custom tabs (UX)
+- Reworked settings UI
 - Multiplayer liquid sync now uses the host's liquid ordering, if possible
 - `setbodyfield` and `setlimbfield` now autofill custom statuses too
+- Fixed liquidStack<> containers from always spawning at 100%
 
 
 ## v1.0.5 (Stable)

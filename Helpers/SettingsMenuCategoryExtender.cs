@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using CUCoreLib.Registries;
@@ -10,32 +9,49 @@ namespace CUCoreLib.Helpers
 {
     internal sealed class SettingsMenuCategoryExtender : MonoBehaviour
     {
-        private const int BuiltInTabCount = 5;
-        private const float MinimumInterButtonGap = 2f;
-        private const float TabRowGap = 4f;
-        private const string CustomTabNamePrefix = "CUCoreLibSettingsTab_";
+        private const float RailWidth = 240f;
+        private const float FramePadding = 10f;
+        // Frame's own left border tucks under the window's (looks better then a gap)
+        private const float RailEdgeGap = -FramePadding;
+        private const float RailButtonHeight = 48f;
+        private const float RailSpacing = 6f;
+        private const float ScrollbarWidth = 20f;
+        private const float ScrollbarGap = 6f;
+        private const float RailWheelRowStep = RailButtonHeight + RailSpacing;
+        private const float RailScrollTime = 0.18f;
         private const float ScrollPixelsPerWheelStep = 48f;
+        private const string RailFrameName = "CUCoreLibModOptionTabFrame";
+        private const string VanillaScrollbarPath = "Scroll/Scrollbar Vertical";
+        private const string RailName = "CUCoreLibModOptionTabs";
+        private const string CustomTabNamePrefix = "CUCoreLibSettingsTab_";
         private readonly Dictionary<Button, int> buttonCategoryIndices = new Dictionary<Button, int>();
-
-        private readonly List<Button> customButtons = new List<Button>();
         private readonly List<TMP_Dropdown> cachedDropdowns = new List<TMP_Dropdown>();
-        private readonly List<Vector2> builtInAnchoredPositions = new List<Vector2>();
-        private readonly List<Vector2> builtInSizes = new List<Vector2>();
         private int activeCategoryIndex;
         private string activeOwnedCategoryKey;
-        private bool capturedBuiltInLayout;
+        private float railScrollTarget = 1f;
+        private float railScrollVelocity;
+        private GameObject frame;
+        private RectTransform railContent;
+        private RectTransform railViewport;
+        private ScrollRect railScroll;
         private SettingsMenu menu;
 
         private void Update()
         {
             if (!menu || !menu.content) return;
 
+            ClampScrollPosition();
+            EaseRailToTarget();
+
             if (IsMouseOverExpandedDropdown()) return;
 
-            var maxScroll = GetMaxScroll();
-            if (maxScroll <= 0f)
+            var wheel = Input.mouseScrollDelta.y;
+            if (Mathf.Abs(wheel) < 0.01f) return;
+
+            if (railScroll && railViewport &&
+                RectTransformUtility.RectangleContainsScreenPoint(railViewport, Input.mousePosition))
             {
-                ClampScrollPosition();
+                StepRail(wheel);
                 return;
             }
 
@@ -43,12 +59,7 @@ namespace CUCoreLib.Helpers
             if (!viewport ||
                 !RectTransformUtility.RectangleContainsScreenPoint(viewport, Input.mousePosition)) return;
 
-            var scroll = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(scroll) < 0.01f) return;
-
-            var anchoredPosition = menu.content.anchoredPosition;
-            anchoredPosition.y = Mathf.Clamp(anchoredPosition.y - scroll * ScrollPixelsPerWheelStep, 0f, maxScroll);
-            menu.content.anchoredPosition = anchoredPosition;
+            ScrollBy(menu.content, viewport, wheel);
         }
 
         private bool IsMouseOverExpandedDropdown()
@@ -61,8 +72,7 @@ namespace CUCoreLib.Helpers
                 RectTransformUtility.RectangleContainsScreenPoint(templateRect, mousePos));
         }
 
-        // fixes dropdown templates created by the game's SettingsMenu.
-        // vanilla prefab has a cramped viewport (only ~4 items visible)
+        // Fix cloned viewports/scroll rects
         internal void FixDropdownsInContent(Transform content)
         {
             cachedDropdowns.Clear();
@@ -76,7 +86,6 @@ namespace CUCoreLib.Helpers
             }
         }
 
-        // the overlay is too strange, i don't get it lol
         private static void FixDropdown(TMP_Dropdown dropdown)
         {
             var template = dropdown.template;
@@ -135,10 +144,7 @@ namespace CUCoreLib.Helpers
 
             if (menu.buttons == null) menu.buttons = new List<Button>();
 
-            activeCategoryIndex = Mathf.Clamp(activeCategoryIndex, 0, int.MaxValue);
-            CaptureBuiltInLayoutIfNeeded();
-            RegisterBuiltInButtons();
-            RebuildButtons();
+            RebuildRail();
             ApplyButtonSprites();
             ClampScrollPosition();
         }
@@ -159,12 +165,12 @@ namespace CUCoreLib.Helpers
         {
             if (menu == null) return;
 
-            RebuildButtons();
+            RebuildRail();
             if (!string.IsNullOrWhiteSpace(activeOwnedCategoryKey) &&
                 ModOptionsRegistry.TryGetOwnedCustomCategory(activeOwnedCategoryKey, out var activeEntry) &&
                 activeEntry != null)
                 activeCategoryIndex = activeEntry.CategoryIndex;
-            // Refreshes fire while a menu stays open. So we don't snap back to the top haha
+            // Prevent snapping
             var scrollY = menu.content != null ? menu.content.anchoredPosition.y : 0f;
             menu.SelectTab(activeCategoryIndex);
             if (menu.content != null)
@@ -176,42 +182,26 @@ namespace CUCoreLib.Helpers
             }
         }
 
-        private void RebuildButtons()
+        private void RebuildRail()
         {
-            RemoveCustomButtons();
-            PurgeUntrackedCustomButtons();
-            buttonCategoryIndices.Clear();
-            RestoreBuiltInLayout();
-            RegisterBuiltInButtons();
+            DestroyRail();
+            if (menu == null) return;
+
             ModOptionsRegistry.ReconcileCustomCategoryOwnership(Settings.settings);
 
             var categories = ModOptionsRegistry.GetCustomCategories();
-            if (menu == null || menu.buttons == null || menu.buttons.Count == 0)
-            {
-                return;
-            }
-
-            if (categories.Count == 0)
-            {
-                return;
-            }
+            if (categories.Count == 0) return;
 
             var template = FindTemplateButton();
             if (!template) return;
 
-            var templateRect = template.transform as RectTransform;
-            if (templateRect == null) return;
-
-            var parent = template.transform.parent;
-            var origin = templateRect.anchoredPosition;
+            if (!BuildRail(template)) return;
 
             for (var i = 0; i < categories.Count; i++)
             {
                 var category = categories[i];
-                var clone = Instantiate(template.gameObject, parent, false);
+                var clone = Instantiate(template.gameObject, railContent, false);
                 clone.name = CustomTabNamePrefix + category.DisplayName;
-                var cloneRect = clone.transform as RectTransform;
-                if (cloneRect != null) cloneRect.anchoredPosition = origin;
 
                 var button = clone.GetComponent<Button>();
                 if (!button)
@@ -220,14 +210,11 @@ namespace CUCoreLib.Helpers
                     continue;
                 }
 
-                // The cloned prefab retains its inspector-wired callback. Remove it by replacing
-                // the event, otherwise this tab selects both its template category and ours.
                 button.onClick = new Button.ButtonClickedEvent();
                 var categoryIndex = category.CategoryIndex;
                 button.onClick.AddListener(delegate { menu.SelectTab(categoryIndex); });
 
-                var label = clone.GetComponentInChildren<TextMeshProUGUI>(false)
-                            ?? clone.GetComponentInChildren<TextMeshProUGUI>(true);
+                var label = clone.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (label)
                 {
                     label.text = category.DisplayName;
@@ -240,89 +227,151 @@ namespace CUCoreLib.Helpers
                     NormalizeTabLabel(label);
                 }
 
-                menu.buttons.Add(button);
-                customButtons.Add(button);
+                var layout = clone.AddComponent<LayoutElement>();
+                layout.minHeight = RailButtonHeight;
+                layout.preferredHeight = RailButtonHeight;
+
                 buttonCategoryIndices[button] = categoryIndex;
             }
 
-            ReflowButtonsIntoOriginalBand();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(railContent);
+            railScrollVelocity = 0f;
+            railScroll.verticalNormalizedPosition = railScrollTarget;
         }
 
-        private void RemoveCustomButtons()
+        private bool BuildRail(Button template)
         {
-            if (menu != null && menu.buttons != null)
-                foreach (var button in customButtons)
-                    menu.buttons.Remove(button);
+            var rootRect = menu.transform as RectTransform;
+            var panelRect = template.transform.parent as RectTransform;
+            if (rootRect == null || panelRect == null) return false;
 
-            foreach (var button in customButtons)
-                if (button)
-                {
-                    buttonCategoryIndices.Remove(button);
-                    Destroy(button.gameObject);
-                }
+            var corners = new Vector3[4];
+            panelRect.GetWorldCorners(corners);
+            var panelTopLeft = rootRect.InverseTransformPoint(corners[1]);
+            var panelTopRight = rootRect.InverseTransformPoint(corners[2]);
+            var panelBottomLeft = rootRect.InverseTransformPoint(corners[0]);
 
-            customButtons.Clear();
+            frame = new GameObject(RailFrameName, typeof(RectTransform));
+            frame.transform.SetParent(rootRect, false);
+            frame.transform.SetAsFirstSibling();
+
+            var frameRect = frame.transform as RectTransform;
+            frameRect.anchorMin = new Vector2(0.5f, 0.5f);
+            frameRect.anchorMax = new Vector2(0.5f, 0.5f);
+            frameRect.pivot = new Vector2(1f, 1f);
+            frameRect.sizeDelta = new Vector2(RailWidth, panelTopLeft.y - panelBottomLeft.y);
+            frameRect.anchoredPosition = new Vector2(
+                Mathf.Min(panelTopRight.x + RailEdgeGap + RailWidth, rootRect.rect.xMax) - rootRect.rect.center.x,
+                panelTopLeft.y - rootRect.rect.center.y);
+
+            CopyImage(panelRect.GetComponent<Image>(), frameRect);
+
+            var rail = new GameObject(RailName, typeof(RectTransform), typeof(RectMask2D), typeof(ScrollRect));
+            rail.transform.SetParent(frameRect, false);
+
+            var railRect = rail.transform as RectTransform;
+            railRect.anchorMin = Vector2.zero;
+            railRect.anchorMax = Vector2.one;
+            railRect.offsetMin = new Vector2(FramePadding, FramePadding);
+            railRect.offsetMax = new Vector2(-(FramePadding + ScrollbarWidth + ScrollbarGap), -FramePadding);
+
+            railViewport = railRect;
+
+            railScroll = railRect.GetComponent<ScrollRect>();
+            railScroll.horizontal = false;
+            railScroll.vertical = true;
+            railScroll.movementType = ScrollRect.MovementType.Clamped;
+            railScroll.inertia = false;
+            railScroll.viewport = railRect;
+
+            var contentGo = new GameObject("Content", typeof(RectTransform), typeof(VerticalLayoutGroup),
+                typeof(ContentSizeFitter));
+            contentGo.transform.SetParent(railRect, false);
+
+            railContent = contentGo.transform as RectTransform;
+            railContent.anchorMin = new Vector2(0f, 1f);
+            railContent.anchorMax = new Vector2(1f, 1f);
+            railContent.pivot = new Vector2(0.5f, 1f);
+            railContent.anchoredPosition = Vector2.zero;
+            railContent.sizeDelta = Vector2.zero;
+
+            railScroll.content = railContent;
+
+            var layoutGroup = contentGo.GetComponent<VerticalLayoutGroup>();
+            layoutGroup.childAlignment = TextAnchor.UpperCenter;
+            layoutGroup.spacing = RailSpacing;
+            layoutGroup.childControlWidth = true;
+            layoutGroup.childForceExpandWidth = true;
+            layoutGroup.childControlHeight = true;
+            layoutGroup.childForceExpandHeight = false;
+
+            contentGo.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            AttachScrollbar(panelRect, frameRect);
+            return true;
         }
 
-        private void PurgeUntrackedCustomButtons()
+        private void AttachScrollbar(RectTransform panelRect, RectTransform frameRect)
         {
-            var parent = FindStripParent();
-            if (!parent) return;
+            var source = panelRect.Find(VanillaScrollbarPath) as RectTransform;
+            if (!source) return;
 
-            for (var i = parent.childCount - 1; i >= 0; i--)
-            {
-                var child = parent.GetChild(i);
-                if (!child || !child.name.StartsWith(CustomTabNamePrefix, StringComparison.Ordinal)) continue;
-                if (customButtons.Any(button => button && button.gameObject == child.gameObject)) continue;
+            // Cloning the window's own scrollbar keeps the handle art and track metrics identical.
+            var clone = Instantiate(source.gameObject, frameRect, false);
+            var rect = clone.transform as RectTransform;
+            rect.anchorMin = new Vector2(1f, 0f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.offsetMin = new Vector2(-(FramePadding + ScrollbarWidth), FramePadding);
+            rect.offsetMax = new Vector2(-FramePadding, -FramePadding);
 
-                Destroy(child.gameObject);
-            }
+            railScroll.verticalScrollbar = clone.GetComponent<Scrollbar>();
+            railScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
         }
 
-        private Transform FindStripParent()
+        private static void CopyImage(Image source, RectTransform target)
         {
-            var first = menu?.buttons?.FirstOrDefault(button => button != null);
-            return first != null ? first.transform.parent : null;
+            if (!source) return;
+
+            var image = target.gameObject.AddComponent<Image>();
+            image.sprite = source.sprite;
+            image.type = source.type;
+            image.material = source.material;
+            image.color = source.color;
+            image.raycastTarget = false;
         }
 
-        private void RegisterBuiltInButtons()
+        private void DestroyRail()
         {
-            var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
-            for (var i = 0; i < builtInCount; i++)
-            {
-                var button = menu.buttons[i];
-                if (button != null) buttonCategoryIndices[button] = i;
-            }
+            buttonCategoryIndices.Clear();
+            railContent = null;
+            railViewport = null;
+            railScroll = null;
+
+            if (!frame) return;
+
+            Destroy(frame);
+            frame = null;
         }
 
         private Button FindTemplateButton()
         {
-            if (menu == null || menu.buttons == null || menu.buttons.Count == 0) return null;
+            if (menu == null || menu.buttons == null) return null;
 
-            var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
-            for (var i = builtInCount - 1; i >= 0; i--)
-            {
-                var button = menu.buttons[i];
-                if (button != null && !customButtons.Contains(button)) return button;
-            }
-
-            return menu.buttons.LastOrDefault(button => button != null && !customButtons.Contains(button));
+            return menu.buttons.FirstOrDefault(button => button != null);
         }
 
         private void ApplyButtonSprites()
         {
-            if (menu == null || menu.buttons == null) return;
+            if (menu == null) return;
 
-            foreach (var button in menu.buttons)
+            foreach (var pair in buttonCategoryIndices)
             {
-                if (!button) continue;
+                if (!pair.Key) continue;
 
-                var image = button.GetComponent<Image>();
-                if (image == null) continue;
-                if (!buttonCategoryIndices.ContainsKey(button)) continue;
-                var isActive = buttonCategoryIndices.TryGetValue(button, out var categoryIndex)
-                               && categoryIndex == activeCategoryIndex;
-                image.sprite = isActive ? menu.buttonOpen : menu.buttonClosed;
+                var image = pair.Key.GetComponent<Image>();
+                if (image)
+                    image.sprite = pair.Value == activeCategoryIndex ? menu.buttonOpen : menu.buttonClosed;
             }
         }
 
@@ -339,164 +388,45 @@ namespace CUCoreLib.Helpers
         {
             if (menu?.content == null) return;
 
-            var anchoredPosition = menu.content.anchoredPosition;
-            anchoredPosition.y = Mathf.Clamp(anchoredPosition.y, 0f, GetMaxScroll());
-            menu.content.anchoredPosition = anchoredPosition;
+            ScrollBy(menu.content, menu.content.parent as RectTransform, 0f);
         }
 
-        private float GetMaxScroll()
+        private void StepRail(float wheel)
         {
-            if (menu?.content == null) return 0f;
+            if (!railContent || !railViewport) return;
 
-            var viewport = menu.content.parent as RectTransform;
-            if (viewport == null) return 0f;
-
-            return Mathf.Max(0f, menu.content.sizeDelta.y - viewport.rect.height);
-        }
-
-        private void CaptureBuiltInLayoutIfNeeded()
-        {
-            if (capturedBuiltInLayout || menu == null || menu.buttons == null || menu.buttons.Count < BuiltInTabCount)
+            var range = railContent.rect.height - railViewport.rect.height;
+            if (range <= 0f)
             {
+                railScrollTarget = 1f;
                 return;
             }
 
-            builtInAnchoredPositions.Clear();
-            builtInSizes.Clear();
-
-            for (var i = 0; i < BuiltInTabCount; i++)
-            {
-                var rect = menu.buttons[i] != null ? menu.buttons[i].transform as RectTransform : null;
-                if (rect == null)
-                {
-                    builtInAnchoredPositions.Clear();
-                    builtInSizes.Clear();
-                    return;
-                }
-
-                builtInAnchoredPositions.Add(rect.anchoredPosition);
-                builtInSizes.Add(rect.sizeDelta);
-            }
-
-            capturedBuiltInLayout = builtInAnchoredPositions.Count == BuiltInTabCount;
+            railScrollTarget = Mathf.Clamp01(railScrollTarget + wheel * RailWheelRowStep / range);
         }
 
-        private void RestoreBuiltInLayout()
+        // Normalised position is the only ScrollRect surface that moves the content and the
+        // scrollbar together, so the easing has to route through it rather than the content rect.
+        private void EaseRailToTarget()
         {
-            if (!capturedBuiltInLayout || menu == null || menu.buttons == null) return;
+            if (!railScroll || !railContent) return;
 
-            var builtInCount = Mathf.Min(Mathf.Min(BuiltInTabCount, menu.buttons.Count), builtInAnchoredPositions.Count);
-            for (var i = 0; i < builtInCount; i++)
-            {
-                var rect = menu.buttons[i] != null ? menu.buttons[i].transform as RectTransform : null;
-                if (rect == null) continue;
-
-                rect.anchoredPosition = builtInAnchoredPositions[i];
-                rect.sizeDelta = builtInSizes[i];
-            }
+            railScroll.verticalNormalizedPosition = Mathf.SmoothDamp(railScroll.verticalNormalizedPosition,
+                railScrollTarget, ref railScrollVelocity, RailScrollTime);
         }
 
-        private void ReflowButtonsIntoOriginalBand()
+        private static void ScrollBy(RectTransform content, RectTransform viewport, float wheel)
         {
-            if (!capturedBuiltInLayout) return;
+            if (!content || !viewport) return;
 
-            var strip = CollectStripButtons();
-            if (strip.Count == 0) return;
-
-            var firstRect = strip[0].transform as RectTransform;
-            if (firstRect == null) return;
-
-            var parentRect = firstRect.parent as RectTransform;
-            if (parentRect == null) return;
-
-            var rowHeight = builtInSizes[0].y;
-            var bandLeft = GetBandLeft(firstRect, parentRect);
-            var bandWidth = GetBandWidth(bandLeft, parentRect);
-            var gap = strip.Count > 1 ? MinimumInterButtonGap : 0f;
-            var singleRowWidth = (bandWidth - gap * (strip.Count - 1)) / strip.Count;
-
-            var builtInRowY = firstRect.anchoredPosition.y;
-
-            var customCount = strip.Count(button => customButtons.Contains(button));
-            var builtInCount = strip.Count - customCount;
-
-            if (customCount == 0 || singleRowWidth >= builtInSizes[0].x)
-            {
-                LayoutTabRow(strip, parentRect, bandLeft, bandWidth, gap, builtInRowY, rowHeight);
-                return;
-            }
-
-            // Too many tabs, in this case we toss it above 
-            LayoutTabRow(strip.GetRange(0, builtInCount), parentRect, bandLeft, bandWidth, gap, builtInRowY, rowHeight);
-            LayoutTabRow(strip.GetRange(builtInCount, customCount), parentRect, bandLeft, bandWidth, gap,
-                builtInRowY + rowHeight + TabRowGap, rowHeight);
-        }
-
-        private List<Button> CollectStripButtons()
-        {
-            var strip = new List<Button>();
-            var builtInCount = Mathf.Min(BuiltInTabCount, menu.buttons.Count);
-
-            for (var i = 0; i < builtInCount; i++)
-            {
-                var button = menu.buttons[i];
-                if (button != null && !customButtons.Contains(button)) strip.Add(button);
-            }
-
-            foreach (var button in customButtons)
-            {
-                if (button && button.transform is RectTransform) strip.Add(button);
-            }
-
-            return strip;
-        }
-
-        private void LayoutTabRow(List<Button> row, RectTransform parentRect, float bandLeft, float bandWidth,
-            float gap, float rowY, float rowHeight)
-        {
-            if (row.Count == 0) return;
-
-            var targetWidth = Mathf.Max(1f, (bandWidth - gap * (row.Count - 1)) / row.Count);
-            var currentLeft = bandLeft;
-
-            foreach (var button in row)
-            {
-                var rect = button != null ? button.transform as RectTransform : null;
-                if (rect == null) continue;
-
-                rect.sizeDelta = new Vector2(targetWidth, rowHeight);
-                rect.anchoredPosition = new Vector2(
-                    currentLeft + targetWidth * 0.5f - GetAnchorRefX(rect, parentRect), rowY);
-                currentLeft += targetWidth + gap;
-
-                var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (label) NormalizeTabLabel(label);
-            }
-        }
-
-        private float GetBandLeft(RectTransform firstRect, RectTransform parentRect)
-        {
-            return GetAnchorRefX(firstRect, parentRect) + firstRect.anchoredPosition.x - builtInSizes[0].x * 0.5f;
-        }
-
-        private float GetBandWidth(float bandLeft, RectTransform parentRect)
-        {
-            // The vanilla tabs only cover part of their parent. Mirror the left inset onto the right
-            // side so the strip always fills the visible band, whatever the tab count is.
-            var leftInset = bandLeft - parentRect.rect.xMin;
-            return Mathf.Max(1f, parentRect.rect.width - leftInset * 2f);
-        }
-
-        private static float GetAnchorRefX(RectTransform rect, RectTransform parentRect)
-        {
-            var anchorMid = (rect.anchorMin.x + rect.anchorMax.x) * 0.5f;
-            return parentRect.rect.xMin + anchorMid * parentRect.rect.width;
+            var maxScroll = Mathf.Max(0f, content.rect.height - viewport.rect.height);
+            var anchoredPosition = content.anchoredPosition;
+            anchoredPosition.y = Mathf.Clamp(anchoredPosition.y - wheel * ScrollPixelsPerWheelStep, 0f, maxScroll);
+            content.anchoredPosition = anchoredPosition;
         }
 
         private static void NormalizeTabLabel(TMP_Text label)
         {
-            if (label == null) return;
-
             var labelRect = label.transform as RectTransform;
             if (labelRect != null)
             {
@@ -509,7 +439,9 @@ namespace CUCoreLib.Helpers
             }
 
             label.alignment = TextAlignmentOptions.Center;
-            label.enableAutoSizing = false;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 12f;
+            label.fontSizeMax = 40f;
         }
     }
 }
