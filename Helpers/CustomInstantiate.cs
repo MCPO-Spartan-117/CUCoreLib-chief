@@ -399,13 +399,14 @@ namespace CUCoreLib.Helpers
                 lightObject.transform.localRotation = Quaternion.identity;
                 lightObject.transform.localScale = Vector3.one;
                 light = lightObject.GetComponent<Light2D>();
+                light.enabled = properties.Enabled;
             }
 
             ItemRegistryPatches.ApplyLightProperties(light, properties);
 
             if (lightItem == null) return;
             lightItem.light = light;
-            lightItem.shouldEnable = true;
+            lightItem.shouldEnable = properties.Enabled;
         }
 
         private static string ChooseTemplateId(CustomItemInfo info)

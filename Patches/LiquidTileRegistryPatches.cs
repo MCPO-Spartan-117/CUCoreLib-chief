@@ -28,6 +28,8 @@ namespace CUCoreLib.Patches
             return !LiquidTileRegistry.RenderFluids(__instance);
         }
 
+        //Harmony reports pos.x/y are modified, `GetLiquid` doesn't modify
+        #pragma warning disable Harmony003
         [HarmonyPatch(typeof(FluidManager), nameof(FluidManager.WaterInfo))]
         [HarmonyPostfix]
         private static void CustomWaterInfo(FluidManager __instance, Vector2Int pos,
@@ -61,6 +63,7 @@ namespace CUCoreLib.Patches
             if (LiquidTileRegistry.TryGetDisplayName(worldByte, out var name, out var description))
                 __result = (name, description);
         }
+        #pragma warning restore Harmony003
 
         [HarmonyPatch(typeof(FluidManager), nameof(FluidManager.DrinkLiquid))]
         [HarmonyPrefix]

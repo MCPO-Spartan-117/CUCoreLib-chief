@@ -371,6 +371,7 @@ namespace CUCoreLib.Registries
                             ["intensity"] = info.Light.Intensity,
                             ["color"] = NetworkSnapshotSerialization.WriteColor(info.Light.Color),
                             ["falloffIntensity"] = info.Light.FalloffIntensity,
+                            ["volumeIntensity"] = info.Light.VolumeIntensity,
                             ["pointLightOuterRadius"] = info.Light.PointLightOuterRadius,
                             ["pointLightInnerRadius"] = info.Light.PointLightInnerRadius,
                             ["pointLightOuterAngle"] = info.Light.PointLightOuterAngle,
@@ -378,6 +379,7 @@ namespace CUCoreLib.Registries
                             ["lightType"] = (int)info.Light.LightType,
                             ["offsetX"] = info.Light.Offset.x,
                             ["offsetY"] = info.Light.Offset.y,
+                            ["enabled"] = info.Light.Enabled,
                             ["addLightItem"] = info.Light.AddLightItem
                         };
 
@@ -528,6 +530,7 @@ namespace CUCoreLib.Registries
                         Intensity = light.Value<float?>("intensity") ?? 0.75f,
                         Color = NetworkSnapshotSerialization.ReadColor(light["color"], Color.white),
                         FalloffIntensity = light.Value<float?>("falloffIntensity") ?? 0.5f,
+                        VolumeIntensity = light.Value<float?>("volumeIntensity"),
                         PointLightOuterRadius = light.Value<float?>("pointLightOuterRadius") ?? 0f,
                         PointLightInnerRadius = light.Value<float?>("pointLightInnerRadius") ?? 0f,
                         PointLightOuterAngle = light.Value<float?>("pointLightOuterAngle") ?? 360f,
@@ -535,6 +538,7 @@ namespace CUCoreLib.Registries
                         LightType = (CustomLightType)(light.Value<int?>("lightType") ?? 3),
                         Offset =
                             new Vector2(light.Value<float?>("offsetX") ?? 0f, light.Value<float?>("offsetY") ?? 0f),
+                        Enabled = light.Value<bool?>("enabled") ?? true,
                         AddLightItem = light.Value<bool?>("addLightItem") ?? true
                     };
 

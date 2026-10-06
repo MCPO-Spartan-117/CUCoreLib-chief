@@ -155,7 +155,7 @@ namespace CUCoreLib.Patches
             return __exception;
         }
 
-        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false)
+        internal static void ApplyCustomItemRuntime(Item item, bool preferWornSprite = false, bool visualonly = false)
         {
             if (item == null || string.IsNullOrWhiteSpace(item.id))
                 return;
@@ -165,11 +165,14 @@ namespace CUCoreLib.Patches
 
             var shouldPreferWornSprite = preferWornSprite || IsCurrentlyWornWearable(item, def);
 
-            ItemRegistry.EnsureRuntimeCustomDataState(item, out _);
             ApplyCustomItemVisuals(item, def, shouldPreferWornSprite);
-            ApplyCustomItemComponents(item, def);
-            ApplyCustomSpawnComponents(item, def);
             ApplyCustomHeldOffset(item, def);
+
+            if(!visualonly) {
+                ItemRegistry.EnsureRuntimeCustomDataState(item, out _);
+                ApplyCustomItemComponents(item, def);
+                ApplyCustomSpawnComponents(item, def);
+            }
         }
 
         internal static void RefreshLiveInstances(IEnumerable<string> itemIds = null)
@@ -570,13 +573,14 @@ namespace CUCoreLib.Patches
                 lightObject.transform.localRotation = Quaternion.identity;
                 lightObject.transform.localScale = Vector3.one;
                 light = lightObject.GetComponent<Light2D>();
+                light.enabled = properties.Enabled;
             }
 
             ApplyLightProperties(light, properties);
 
             if (lightItem == null) return;
             lightItem.light = light;
-            lightItem.shouldEnable = true;
+            lightItem.shouldEnable = properties.Enabled;
         }
 
         /// <summary>
@@ -594,6 +598,12 @@ namespace CUCoreLib.Patches
             light.intensity = properties.Intensity;
             light.color = properties.Color;
             light.falloffIntensity = properties.FalloffIntensity;
+            if(properties.VolumeIntensity != null) {
+                light.volumeIntensity = (float)properties.VolumeIntensity;
+                light.volumeIntensityEnabled = true;
+            } else {
+                light.volumeIntensityEnabled = false;
+            }
             light.pointLightOuterRadius = properties.PointLightOuterRadius;
             light.pointLightInnerRadius = properties.PointLightInnerRadius;
             light.pointLightOuterAngle = properties.PointLightOuterAngle;
@@ -759,13 +769,6 @@ namespace CUCoreLib.Patches
             item.condition = Mathf.Clamp01(startCharge / Mathf.Max(1f, maxCharge));
         }
 
-        [HarmonyPatch(typeof(Body), "PickUpItem")]
-        [HarmonyPostfix]
-        private static void ApplyCustomScaleAfterPickup(Item item)
-        {
-            ApplyCustomItemRuntime(item);
-        }
-
         [HarmonyPatch(typeof(Body), "AutoPickUpItem")]
         [HarmonyPrefix]
         private static void ApplyCustomRuntimeBeforeAutoPickup(Item item)
@@ -780,11 +783,12 @@ namespace CUCoreLib.Patches
             ResetCustomHeldOffset(item);
         }
 
+        [HarmonyPatch(typeof(Body), "PickUpItem")]
         [HarmonyPatch(typeof(Body), "DropItem", typeof(Item))]
         [HarmonyPostfix]
-        private static void ApplyCustomScaleAfterDrop(Item item)
+        private static void ApplyCustomScale(Item item)
         {
-            ApplyCustomItemRuntime(item);
+            ApplyCustomItemRuntime(item, visualonly: true);
         }
 
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
@@ -835,9 +839,24 @@ namespace CUCoreLib.Patches
         }
 
         [HarmonyPatch(typeof(LightItem), "Start")]
-        [HarmonyPostfix]
-        private static void FindCustomLightAfterStart(LightItem __instance)
+        [HarmonyPrefix]
+        private static void LogEnabled(LightItem __instance, out bool? __state)
         {
+            if(__instance.transform.Find("CustomLight") != null) {
+                __state = __instance.shouldEnable;
+            } else {
+                __state = null;
+            }
+        }
+
+        [HarmonyPatch(typeof(LightItem), "Start")]
+        [HarmonyPostfix]
+        private static void FindCustomLightAfterStart(LightItem __instance, bool? __state)
+        {
+            if(__state != null) {
+                __instance.shouldEnable = (bool)__state;
+            }
+
             if (__instance == null || __instance.light != null) return;
 
             __instance.light = __instance.GetComponentInChildren<Light2D>();
