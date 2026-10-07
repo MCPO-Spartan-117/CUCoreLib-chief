@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
@@ -13,13 +14,11 @@ namespace CUCoreLib.Patches
     [HarmonyPatch]
     internal static class BodyFormulaPatches
     {
-        private static readonly Dictionary<string, MethodInfo> PeriodicReplacements =
-            new Dictionary<string, MethodInfo>
-            {
-                ["maxEncumberance"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetMaxEncumberance)),
-                ["totalEncumberance"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetTotalEncumberance)),
-                ["immunity"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetImmunity))
-            };
+        private static readonly Dictionary<string, (Type, string)> PeriodicReplacements = new Dictionary<string, (Type, string)>() {
+            ["maxEncumberance"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.MaxEncumberance)),
+            ["totalEncumberance"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.TotalEncumberance)),
+            ["immunity"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.Immunity))
+        };
 
         private static readonly MethodInfo FloatLerpMethod =
             AccessTools.Method(typeof(Mathf), nameof(Mathf.Lerp), new[] { typeof(float), typeof(float), typeof(float) });
@@ -72,45 +71,29 @@ namespace CUCoreLib.Patches
 
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
         [HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> HandlePeriodicChecks_Transpiler(
-            IEnumerable<CodeInstruction> instructions)
-        {
-            var codes = new List<CodeInstruction>(instructions);
-            bool insertedAveragePainPatch = false;
+        public static IEnumerable<CodeInstruction> HandlePeriodicChecks_Transpiler(IEnumerable<CodeInstruction> instructions) {
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            Dictionary<string, (Type, string)> typefuncarr = new Dictionary<string, (Type, string)>(PeriodicReplacements);
+            List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                new CodeInstruction(Ldarg_0),
+                Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                null,
+                Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                new CodeInstruction(Add)
+            };
 
-            for (var i = 0; i < codes.Count; i++)
-            {
-                if (!insertedAveragePainPatch &&
-                    i + 2 < codes.Count &&
-                    codes[i].opcode == OpCodes.Ldarg_0 &&
-                    IsZeroFloatLoad(codes[i + 1]) &&
-                    codes[i + 2].opcode == OpCodes.Stfld &&
-                    codes[i + 2].operand is FieldInfo averagePainField &&
-                    averagePainField.DeclaringType == typeof(Body) &&
-                    averagePainField.Name == "averagePain")
-                {
-                    insertedAveragePainPatch = true;
-                    yield return new CodeInstruction(OpCodes.Ldarg_0);
-                    yield return new CodeInstruction(OpCodes.Call,
-                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(ApplyAveragePainContribution)));
+            for(int i = codes.Count - 1; i >= 0; i--) {
+                if(codes[i].opcode == Stfld) {
+                    FieldInfo field = (FieldInfo)codes[i].operand;
+                    if(field.DeclaringType == typeof(Body) && typefuncarr.TryGetValue(field.Name, out (Type type, string name) typefunc)) {
+                        callfunct[2] = LoadField(typefunc.type, typefunc.name);
+                        codes.InsertRange(i, callfunct);
+                        typefuncarr.Remove(field.Name);
+                    }
                 }
-
-                CodeInstruction instruction = codes[i];
-                if (instruction.opcode == OpCodes.Stfld &&
-                    instruction.operand is FieldInfo field &&
-                    field.DeclaringType == typeof(Body) &&
-                    PeriodicReplacements.TryGetValue(field.Name, out MethodInfo setter))
-                {
-                    yield return new CodeInstruction(OpCodes.Call, setter)
-                    {
-                        labels = new List<Label>(instruction.labels),
-                        blocks = new List<ExceptionBlock>(instruction.blocks)
-                    };
-                    continue;
-                }
-
-                yield return instruction;
             }
+
+            return codes;
         }
 
         private static IEnumerable<CodeInstruction> ReplaceBodyFieldStores(
