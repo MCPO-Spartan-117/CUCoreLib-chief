@@ -81,9 +81,9 @@
         <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.2" PrivateAssets="all" />
         <PackageReference Include="Costura.Fody" Version="6.0.0" GeneratePathProperty="true" PrivateAssets="All" />
         <PackageReference Include="Fody" Version="6.9.3" GeneratePathProperty="true" PrivateAssets="All" />
-        <PackageReference Include="HarmonyX" Version="2.7.0" />
+        <PackageReference Include="HarmonyX" Version="2.9.0" />
         <PackageReference Include="Mono.Cecil" Version="0.11.4" />
-        <PackageReference Include="MonoMod.RuntimeDetour" Version="21.12.13.1" />
+        <PackageReference Include="MonoMod.RuntimeDetour" Version="22.7.31.1" />
         <PackageReference Include="MonoMod.Utils" Version="22.7.31.1" />
         <PackageReference Include="NAudio" Version="2.2.1" />
         <PackageReference Include="NAudio.Core" Version="2.2.1" />
