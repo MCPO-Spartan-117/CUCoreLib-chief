@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text;
 using BepInEx.Bootstrap;
 using CUCoreLib.Data;
+using CUCoreLib.Networking;
 using CUCoreLib.Patches;
 using CUCoreLib.Registries;
 using Newtonsoft.Json.Linq;
@@ -466,11 +467,7 @@ namespace CUCoreLib.Helpers
 
         public static bool TryGetBody(out Body body)
         {
-            body = null;
-            if (PlayerCamera.main == null) return false;
-
-            body = PlayerCamera.main.body;
-            return body != null;
+            return MultiplayerApi.TryGetLocalBody(out body);
         }
 
         public static bool TryGetCamera(out PlayerCamera camera)

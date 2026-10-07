@@ -38,6 +38,8 @@ namespace CUCoreLib.Networking
         private static Version _krokMpVersion;
         private static Type _netPlayerType;
         private static MethodInfo _tryGetNetPlayerAndBodyFromClientIdMethod;
+        private static MemberInfo _localPlayerMember;
+        private static FieldInfo _netPlayerBodyField;
         private static bool _playerDataHandlersRegistered;
 
         public static bool IsAvailable => MultiplayerBridge.IsAvailable;
@@ -272,6 +274,53 @@ namespace CUCoreLib.Networking
                 var clientId = payload?.Value<uint?>("clientId") ?? 0u;
                 return GetCustomPlayerLimbData(clientId);
             });
+        }
+
+        public static bool TryGetLocalBody(out Body body)
+        {
+            body = null;
+
+            if (IsRunning && TryResolveLocalPlayerBody(out var localBody))
+            {
+                body = localBody;
+                return true;
+            }
+
+            if (PlayerCamera.main != null) body = PlayerCamera.main.body;
+            return body != null;
+        }
+
+        private static bool TryResolveLocalPlayerBody(out Body body)
+        {
+            body = null;
+
+            if (_localPlayerMember == null)
+            {
+                _localPlayerMember = FindKrokMpMember("NetPlayer", "LOCAL_PLAYER");
+                if (_localPlayerMember == null) return false;
+            }
+
+            var localPlayer = ReadMember(_localPlayerMember, null);
+            if (localPlayer == null) return false;
+
+            if (_netPlayerBodyField == null)
+                _netPlayerBodyField = localPlayer.GetType().GetField("body");
+
+            body = _netPlayerBodyField?.GetValue(localPlayer) as Body;
+            return body != null;
+        }
+
+        private static object ReadMember(MemberInfo member, object instance)
+        {
+            switch (member)
+            {
+                case FieldInfo field:
+                    return field.GetValue(instance);
+                case PropertyInfo property:
+                    return property.CanRead ? property.GetValue(instance) : null;
+                default:
+                    return null;
+            }
         }
 
         internal static bool TryGetBodyFromClientId(uint clientId, out Body body)

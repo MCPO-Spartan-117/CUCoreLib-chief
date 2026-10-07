@@ -345,7 +345,8 @@ namespace CUCoreLib.Registries
         private static string BuildQueueKey(StatusMoodleDefinition definition, Sprite iconSprite, string iconId)
         {
             var iconKey = iconSprite != null ? iconSprite.name : iconId ?? "icon";
-            return iconKey + "|" + definition.Name + "|" + definition.Intensity;
+            // A multi-stage moodle replaces its own queued entry, surely no one's using two of the same names with different intensities :clueless:
+            return iconKey + "|" + definition.Name;
         }
 
         private static void AddMoodle(MoodleManager manager, StatusMoodleDefinition moodle, bool important)

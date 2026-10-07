@@ -43,6 +43,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - Multiplayer liquid sync now uses the host's liquid ordering, if possible
 - `setbodyfield` and `setlimbfield` now autofill custom statuses too
 - Fixed liquidStack<> containers from always spawning at 100%
+- Multi-stage (same name) moodles no longer stack queued copies when their intensity changes
 
 
 ## v1.0.5 (Stable)

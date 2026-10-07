@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using CUCoreLib.Data;
+using CUCoreLib.Networking;
 using CUCoreLib.Patches;
 
 namespace CUCoreLib.Helpers
@@ -128,7 +129,7 @@ namespace CUCoreLib.Helpers
         private static Body GetBody()
         {
             if (_scopedBody != null) return _scopedBody;
-            return PlayerCamera.main != null ? PlayerCamera.main.body : null;
+            return MultiplayerApi.TryGetLocalBody(out var body) ? body : null;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
