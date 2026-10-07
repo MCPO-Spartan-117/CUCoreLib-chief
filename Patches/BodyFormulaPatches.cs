@@ -256,38 +256,5 @@ namespace CUCoreLib.Patches
                    instruction.operand is float value &&
                    Mathf.Approximately(value, 0f);
         }
-
-        private static void SetMaxEncumberance(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.maxEncumberance = Mathf.Max(0f, value + BodyFormulaData.Sum(data.MaxEncumberance));
-        }
-
-        private static void SetTotalEncumberance(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.totalEncumberance = Mathf.Max(0f, value + BodyFormulaData.Sum(data.TotalEncumberance));
-        }
-
-        private static void SetImmunity(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.immunity = value + BodyFormulaData.Sum(data.Immunity);
-        }
     }
 }
