@@ -92,8 +92,8 @@ jobs:
           $version = $match.Matches[0].Groups[1].Value
 
           "NIGHTLY_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "NIGHTLY_TAG=nightly-v$version-alpha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Resolved nightly tag to nightly-v$version-alpha"
+          "NIGHTLY_TAG=v$version-alpha-nightly" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Resolved nightly tag to v$version-alpha-nightly"
 
       - name: Prepare nightly release description
         shell: powershell
@@ -121,6 +121,44 @@ jobs:
           
           Thanks for testing and reporting issues!
           "@ | Set-Content -LiteralPath $releaseBodyPath -Encoding utf8
+
+      - name: Check if nightly version changed
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            const newVersion = '${{ env.NIGHTLY_VERSION }}';
+            const newTag = '${{ env.NIGHTLY_TAG }}';
+
+            // Find existing nightly release
+            const nightlyRelease = releases.find(r =>
+              r.tag_name.match(/^v[\d.]+-alpha-nightly$/)
+            );
+
+            if (nightlyRelease) {
+              // oh no
+              const existingVersion = nightlyRelease.tag_name.match(/^v([\d.]+)-alpha-nightly$/)[1];
+
+              if (existingVersion !== newVersion) {
+                console.log(`Version changed from ${existingVersion} to ${newVersion}. Deleting old release.`);
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: nightlyRelease.id
+                });
+                core.setOutput('version_changed', 'true');
+              } else {
+                core.setOutput('version_changed', 'false');
+              }
+            } else {
+              core.setOutput('version_changed', 'true');
+            }
 
       - name: Publish nightly prerelease
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
