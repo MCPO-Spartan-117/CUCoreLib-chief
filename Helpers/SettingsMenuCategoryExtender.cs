@@ -214,6 +214,9 @@ namespace CUCoreLib.Helpers
                 var categoryIndex = category.CategoryIndex;
                 button.onClick.AddListener(delegate { menu.SelectTab(categoryIndex); });
 
+                var templateLabel = template.GetComponentInChildren<TextMeshProUGUI>(true);
+                var templateFontSize = templateLabel ? templateLabel.fontSize : 24f;
+
                 var label = clone.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (label)
                 {
@@ -224,7 +227,7 @@ namespace CUCoreLib.Helpers
                         Destroy(localizer);
                     }
 
-                    NormalizeTabLabel(label);
+                    NormalizeTabLabel(label, templateFontSize);
                 }
 
                 var layout = clone.AddComponent<LayoutElement>();
@@ -425,7 +428,7 @@ namespace CUCoreLib.Helpers
             content.anchoredPosition = anchoredPosition;
         }
 
-        private static void NormalizeTabLabel(TMP_Text label)
+        private static void NormalizeTabLabel(TMP_Text label, float vanillaFontSize)
         {
             var labelRect = label.transform as RectTransform;
             if (labelRect != null)
@@ -441,7 +444,7 @@ namespace CUCoreLib.Helpers
             label.alignment = TextAlignmentOptions.Center;
             label.enableAutoSizing = true;
             label.fontSizeMin = 12f;
-            label.fontSizeMax = 40f;
+            label.fontSizeMax = vanillaFontSize;
         }
     }
 }
