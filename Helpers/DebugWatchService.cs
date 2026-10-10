@@ -168,7 +168,18 @@ namespace CUCoreLib.Helpers
         {
             if (field == null) return false;
             if (!field.IsStatic) return false;
-            return IsSupportedValueType(field.FieldType);
+            
+            Type fieldType;
+            try
+            {
+                fieldType = field.FieldType;
+            }
+            catch
+            {
+                return false;
+            }
+            
+            return IsSupportedValueType(fieldType);
         }
 
         private static bool IsSupportedValueType(Type type)
