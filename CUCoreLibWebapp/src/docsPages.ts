@@ -1059,7 +1059,7 @@ status.ExposureSeconds += Time.deltaTime;</code></pre>
 
     <section class="lesson-card">
       <h2>Define a body status with new fields</h2>
-      <p>Body-first is the simplest pattern. Inherit from <span class="inline-code">BodyStatus</span>, add the fields your mod needs, and optionally add <span class="inline-code">[StatusOptions]</span> when you want a stable save key or want to disable saving for transient data.</p>
+      <p>Body-first is the simplest pattern. Inherit from <span class="inline-code">BodyStatus</span>, add the fields your mod needs, and optionally add <span class="inline-code">[StatusOptions]</span> when you want a stable save key, want to disable saving for transient data, or need client-authoritative sync in multiplayer.</p>
       <pre><code>[StatusOptions(Key = "com.yourname.sunstroke", SaveEnabled = false)]
       // The above ^ is optional, it defaults to being saved naturally without need for a key 
       public sealed class SunstrokeStatus : BodyStatus
@@ -1069,6 +1069,16 @@ status.ExposureSeconds += Time.deltaTime;</code></pre>
           public bool WarnedPlayer;
       }</code></pre>
       <p>These fields are ordinary C# fields. Think of them as extra body data for your mod.</p>
+      <h3>ClientAuthoritative</h3>
+      <p>In multiplayer, the host's periodic status sync overwrites each client's custom statuses with the host's copy. For statuses that only the local client should control (e.g., local-only buffs), set <span class="inline-code">ClientAuthoritative = true</span> to exclude that status from both capture and apply:</p>
+      <pre><code>[StatusOptions(ClientAuthoritative = true)]
+      public sealed class SomeDrugEffect : BodyStatus
+      {
+          public float Potency;
+          public float Duration;
+      }</code></pre>
+      <p>Client-authoritative statuses are skipped when the host captures its body snapshot and when a client applies an incoming snapshot. They still save and load normally in singleplayer and on the host.</p>
+      <p>For example, a local-only buff could be a temporary speed boost/CCL status change that the client applies when they consume a special item. The host doesn't need to know about it, and it shouldn't be overwritten by the host's snapshot.</p>
       <p>For quick testing, the vanilla <span class="inline-code">setbodyfield</span> and <span class="inline-code">setlimbfield</span> autofill lists include primitive fields on statuses already attached through <span class="inline-code">GetStatus&lt;T&gt;()</span>. Use the suggested <span class="inline-code">StatusType.Field</span> form to avoid collisions: <span class="inline-code">setbodyfield SunstrokeStatus.ExposureSeconds 60</span> or <span class="inline-code">setlimbfield foreleg FrostbiteStatus.ExposureSeconds 60</span>. A bare field name also works when only one attached status has it.</p>
     </section>
 
@@ -2601,6 +2611,8 @@ BuildingEntityRegistry.Register("SporeMine", new CustomBuildingEntityDefinition
             <tr><td><span class="inline-code">RequestInitialSnapshot</span></td><td>Client re-pull, when something changed that only otherwise lands on join.</td></tr>
             <tr><td><span class="inline-code">GetCustomPlayerData</span>, <span class="inline-code">GetCustomPlayerLimbData</span></td><td>Server-side read of one player's custom body or limb statuses.</td></tr>
             <tr><td><span class="inline-code">RequestCustomPlayerData</span>, <span class="inline-code">RequestCustomPlayerLimbData</span></td><td>The same, from a client.</td></tr>
+            <tr><td><span class="inline-code">Apply(Body|Limb, field, delta)</span></td><td>Add a delta to a vanilla <span class="inline-code">Body</span> or <span class="inline-code">Limb</span> float field. Routes to the host on clients automatically.</td></tr>
+            <tr><td><span class="inline-code">ApplyAbsolute(Body|Limb, field, value)</span></td><td>Set a vanilla <span class="inline-code">Body</span> or <span class="inline-code">Limb</span> float field to an exact value. Routes to the host on clients automatically.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2725,6 +2737,26 @@ MultiplayerApi.RequestCustomPlayerLimbData(clientId, response =>
     JArray limbStatuses = response?["limbs"] as JArray;
     Debug.Log("Limb status payloads: " + (limbStatuses?.Count ?? 0));
 });</code></pre>
+    </section>
+
+    <section class="lesson-card">
+      <h2>Vanilla body and limb fields</h2>
+      <p>Vanilla <span class="inline-code">Body</span> and <span class="inline-code">Limb</span> float fields (like <span class="inline-code">brainHealth</span>, <span class="inline-code">bleedAmount</span>, <span class="inline-code">skinHealth</span>) are host-authoritative in multiplayer. That is, the host's periodic health sync overwrites any local change a client makes directly.</p>
+      <p>This means that if a client tries to set <span class="inline-code">brainHealth</span> to 0, the host will overwrite it with the host's own value on the next health sync, a split second later. The client will see its own change for a fraction of a second, then the host's value will return.</p>
+      <p>Use <span class="inline-code">MultiplayerApi.Apply</span> and <span class="inline-code">MultiplayerApi.ApplyAbsolute</span> to route the change through the host instead.</p>
+      <p>The first argument's type (<span class="inline-code">Body</span> vs <span class="inline-code">Limb</span>) selects the target. On the host or in singleplayer the field is set immediately. On a client the request is sent to the host, which applies it to the sender's body and lets the normal health sync propagate the result.</p>
+      <pre><code>// Deal 10 brain damage to the local player's body.
+MultiplayerApi.Apply(body, "brainHealth", -10f);
+
+// Set brain health to an exact value.
+MultiplayerApi.ApplyAbsolute(body, "brainHealth", 100f);
+
+// Add bleeding to a specific limb.
+MultiplayerApi.Apply(limb, "bleedAmount", 2f);
+
+// Set a limb's skin health to an exact value.
+MultiplayerApi.ApplyAbsolute(limb, "skinHealth", 75f);</code></pre>
+      <p>Only public <span class="inline-code">float</span> fields are supported (for now!). Non-<span class="inline-code">float</span> fields and unknown field names return <span class="inline-code">false</span>.</p>
     </section>
   `;
 }

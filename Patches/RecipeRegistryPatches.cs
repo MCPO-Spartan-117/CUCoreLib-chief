@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using CUCoreLib.Helpers;
+using CUCoreLib.Networking;
 using CUCoreLib.Registries;
 using HarmonyLib;
 using UnityEngine;
@@ -147,6 +148,7 @@ namespace CUCoreLib.Patches
                     if (component == null) continue;
                     component.condition = __instance.resultCondition * conditionMult;
                     PlayerCamera.main.body.AutoPickUpItem(component);
+                    KrokMpCompatibilityPatches.EnsureItemNetworkRegistered(resultObj);
 
                     if (!__instance.dontDrainResultLiquid &&
                         component.TryGetComponent<WaterContainerItem>(out var wat))
@@ -157,6 +159,31 @@ namespace CUCoreLib.Patches
                     CUCoreLibPlugin.Log.LogError($"Failed to craftspawn '{__instance.id}'!");
                 }
             }
+
+            return false;
+        }
+
+        [HarmonyPatch(typeof(Recipe), "TryMake")]
+        [HarmonyPrefix]
+        private static bool RouteCraftToServerIfNeeded(Recipe __instance)
+        {
+            if (!MultiplayerApi.ShouldRouteCraftToServer(__instance)) return true;
+
+            MultiplayerApi.RequestServerCraft(__instance.index, response =>
+            {
+                var success = response?.Value<bool?>("success") ?? false;
+                if (!success)
+                {
+                    var error = response?.Value<string>("error") ?? "Unknown error";
+                    CUCoreLibPlugin.Log?.LogWarning($"Server denied craft request..., {error}");
+                    if (PlayerCamera.main != null)
+                        PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Deny);
+                    return;
+                }
+
+                if (PlayerCamera.main != null)
+                    PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Click);
+            });
 
             return false;
         }

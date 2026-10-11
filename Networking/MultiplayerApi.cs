@@ -4,8 +4,10 @@ using System.Linq;
 using System.Reflection;
 using BepInEx.Bootstrap;
 using CUCoreLib.ContentReload;
+using CUCoreLib.Patches;
 using CUCoreLib.Registries;
 using Newtonsoft.Json.Linq;
+using UnityEngine;
 
 namespace CUCoreLib.Networking
 {
@@ -13,6 +15,9 @@ namespace CUCoreLib.Networking
     {
         private const string CustomPlayerDataChannel = "cucorelib.playerdata.get";
         private const string CustomPlayerLimbDataChannel = "cucorelib.playerdata.limbs.get";
+        private const string CraftRequestChannel = "cucorelib.craft.request";
+        private const string CraftResponseChannel = "cucorelib.craft.response";
+        private const string BodyFieldChannel = "cucorelib.bodyfield.apply";
         private const string NetPlayerTypeName = "Together.ScavPlayer";
         private const string KrokMpPluginGuid = "CasualtiesMP";
 
@@ -74,6 +79,13 @@ namespace CUCoreLib.Networking
         private static MemberInfo _playerBodyMember;
         private static FieldInfo _netPlayerBodyField;
         private static bool _playerDataHandlersRegistered;
+        private static bool _craftHandlersRegistered;
+        private static bool _bodyFieldHandlersRegistered;
+        private static readonly Dictionary<string, FieldInfo> BodyFieldCache =
+            new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, FieldInfo> LimbFieldCache =
+            new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
+        private static FieldInfo _limbBodyField;
 
         public static bool IsAvailable => MultiplayerBridge.IsAvailable;
         public static bool IsRunning => MultiplayerBridge.IsRunning;
@@ -300,6 +312,8 @@ namespace CUCoreLib.Networking
                 "Multiplayer registration is excluded from strict content reload.");
             MultiplayerSyncRegistry.RegisterBuiltIns();
             RegisterCustomPlayerDataHandlers();
+            RegisterCraftHandlers();
+            RegisterBodyFieldHandlers();
         }
 
         public static JObject GetCustomPlayerData(uint clientId)
@@ -363,6 +377,290 @@ namespace CUCoreLib.Networking
                 var clientId = payload?.Value<uint?>("clientId") ?? 0u;
                 return GetCustomPlayerLimbData(clientId);
             });
+        }
+
+        internal static void RegisterCraftHandlers()
+        {
+            ContentReloadSession.AssertNotActive("MultiplayerApi.RegisterCraftHandlers()",
+                "Multiplayer registration is excluded from strict content reload.");
+
+            if (_craftHandlersRegistered) return;
+
+            _craftHandlersRegistered = true;
+            MultiplayerBridge.RegisterServerHandler(CraftRequestChannel, HandleCraftRequest);
+            RegisterClientHandler(CraftResponseChannel, HandleCraftResponse);
+        }
+
+        private static JToken HandleCraftRequest(uint senderClientId, JToken payload)
+        {
+            var recipeIndex = payload?.Value<int?>("recipeIndex") ?? -1;
+            if (recipeIndex < 0 || Recipes.recipes == null || recipeIndex >= Recipes.recipes.Count)
+                return new JObject { ["success"] = false, ["error"] = "Invalid recipe" };
+
+            var recipe = Recipes.recipes[recipeIndex];
+            if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id))
+                return new JObject { ["success"] = false, ["error"] = "Invalid recipe result" };
+
+            if (!TryGetBodyFromClientId(senderClientId, out var body))
+                return new JObject { ["success"] = false, ["error"] = "Player not found" };
+
+            var ingredients = recipe.GetItemsForRecipe();
+            if (ingredients == null)
+                return new JObject { ["success"] = false, ["error"] = "Missing ingredients" };
+
+            for (var i = 0; i < ingredients.Count; i++)
+                recipe.items[i].UseItem(ingredients[i]);
+
+            var skillDiff = body.skills.INT - recipe.INT;
+            var conditionMult = 1f;
+            if (skillDiff < 0 && UnityEngine.Random.value < 0.5f)
+                conditionMult = UnityEngine.Random.Range(0.2f, 0.9f);
+
+            for (var j = 0; j < recipe.result.amount; j++)
+            {
+                var resultObj = Helpers.CustomInstantiate.InstantiateReturn(recipe.result.id,
+                    body.transform.position, Quaternion.identity);
+
+                if (resultObj != null)
+                {
+                    var component = resultObj.GetComponent<Item>();
+                    if (component == null) continue;
+                    component.condition = recipe.result.resultCondition * conditionMult;
+                    body.AutoPickUpItem(component);
+                    KrokMpCompatibilityPatches.EnsureItemNetworkRegistered(resultObj);
+
+                    if (!recipe.result.dontDrainResultLiquid &&
+                        component.TryGetComponent<WaterContainerItem>(out var wat))
+                        wat.stack = new System.Collections.Generic.List<LiquidStack>();
+                }
+                else
+                {
+                    CUCoreLibPlugin.Log?.LogError($"Failed to craftspawn '{recipe.result.id}' for client {senderClientId}!");
+                }
+            }
+
+            Sound.Play("combine", body.transform.position);
+            if (!recipe.hasMadeBefore)
+            {
+                recipe.hasMadeBefore = true;
+                body.happiness += 1f;
+                body.skills.AddExp(2, 10f);
+            }
+
+            return new JObject
+            {
+                ["success"] = true,
+                ["recipeIndex"] = recipeIndex,
+                ["resultId"] = recipe.result.id,
+                ["amount"] = recipe.result.amount
+            };
+        }
+
+        private static void HandleCraftResponse(JToken payload)
+        {
+            var success = payload?.Value<bool?>("success") ?? false;
+            if (!success)
+            {
+                var error = payload?.Value<string>("error") ?? "Unknown error";
+                CUCoreLibPlugin.Log?.LogWarning($"Server denied craft request: {error}");
+                return;
+            }
+
+            PlayCraftSuccessEffects();
+        }
+
+        private static void PlayCraftSuccessEffects()
+        {
+            if (PlayerCamera.main != null)
+                PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Click);
+        }
+
+        internal static bool RequestServerCraft(int recipeIndex, Action<JToken> onResponse, bool reliable = true)
+        {
+            RegisterCraftHandlers();
+            return RequestServer(
+                CraftRequestChannel,
+                new JObject { ["recipeIndex"] = recipeIndex },
+                token => onResponse?.Invoke(token),
+                reliable);
+        }
+
+        internal static bool ShouldRouteCraftToServer(Recipe recipe)
+        {
+            if (!IsClient || IsServer) return false;
+            if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) return false;
+            if (recipe.result.isLiquid) return false;
+
+            return !Registries.ItemRegistry.RegisteredItems.ContainsKey(recipe.result.id);
+        }
+
+        public static bool ApplyAbsolute(Body body, string field, float value)
+        {
+            if (body == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+
+            if (!IsClient || IsServer)
+                return ApplyBodyField(body, name, value, false);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyFieldRequest("body", name, "set", value, 0);
+        }
+
+        public static bool Apply(Body body, string field, float delta)
+        {
+            if (body == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+
+            if (!IsClient || IsServer)
+                return ApplyBodyField(body, name, delta, true);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyFieldRequest("body", name, "add", delta, 0);
+        }
+
+        public static bool ApplyAbsolute(Limb limb, string field, float value)
+        {
+            if (limb == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+            var limbIndex = GetLimbIndex(limb);
+            if (limbIndex < 0) return false;
+
+            if (!IsClient || IsServer)
+                return ApplyLimbField(limb, name, value, false);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyFieldRequest("limb", name, "set", value, limbIndex);
+        }
+
+        public static bool Apply(Limb limb, string field, float delta)
+        {
+            if (limb == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+            var limbIndex = GetLimbIndex(limb);
+            if (limbIndex < 0) return false;
+
+            if (!IsClient || IsServer)
+                return ApplyLimbField(limb, name, delta, true);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyFieldRequest("limb", name, "add", delta, limbIndex);
+        }
+
+        internal static void RegisterBodyFieldHandlers()
+        {
+            ContentReloadSession.AssertNotActive("MultiplayerApi.RegisterBodyFieldHandlers()",
+                "Multiplayer registration is excluded from strict content reload.");
+
+            if (_bodyFieldHandlersRegistered) return;
+
+            _bodyFieldHandlersRegistered = true;
+            MultiplayerBridge.RegisterServerHandler(BodyFieldChannel, HandleBodyFieldRequest);
+        }
+
+        private static JToken HandleBodyFieldRequest(uint senderClientId, JToken payload)
+        {
+            var targetKind = payload?.Value<string>("target");
+            var field = payload?.Value<string>("field")?.Trim();
+            var mode = payload?.Value<string>("mode");
+            var value = payload?.Value<float?>("value") ?? 0f;
+            var limbIndex = payload?.Value<int?>("limbIndex") ?? -1;
+            var isDelta = string.Equals(mode, "add", StringComparison.Ordinal);
+
+            if (!TryGetBodyFromClientId(senderClientId, out var body))
+                return new JObject { ["success"] = false };
+
+            bool success;
+            if (string.Equals(targetKind, "limb", StringComparison.Ordinal)
+                && limbIndex >= 0 && body.limbs != null && limbIndex < body.limbs.Length)
+                success = ApplyLimbField(body.limbs[limbIndex], field, value, isDelta);
+            else
+                success = ApplyBodyField(body, field, value, isDelta);
+
+            return new JObject { ["success"] = success };
+        }
+
+        private static bool SendBodyFieldRequest(string target, string field, string mode, float value, int limbIndex)
+        {
+            return SendToServer(BodyFieldChannel, new JObject
+            {
+                ["target"] = target,
+                ["field"] = field,
+                ["mode"] = mode,
+                ["value"] = value,
+                ["limbIndex"] = limbIndex
+            });
+        }
+
+        private static bool ApplyBodyField(Body body, string field, float value, bool isDelta)
+        {
+            if (string.IsNullOrWhiteSpace(field)) return false;
+
+            var fieldInfo = ResolveBodyField(field);
+            if (fieldInfo == null) return false;
+
+            if (isDelta)
+                value += (float)fieldInfo.GetValue(body);
+
+            fieldInfo.SetValue(body, value);
+            return true;
+        }
+
+        private static bool ApplyLimbField(Limb limb, string field, float value, bool isDelta)
+        {
+            if (string.IsNullOrWhiteSpace(field)) return false;
+
+            var fieldInfo = ResolveLimbField(field);
+            if (fieldInfo == null) return false;
+
+            if (isDelta)
+                value += (float)fieldInfo.GetValue(limb);
+
+            fieldInfo.SetValue(limb, value);
+            return true;
+        }
+
+        private static FieldInfo ResolveBodyField(string name)
+        {
+            if (BodyFieldCache.TryGetValue(name, out var cached)) return cached;
+
+            var field = typeof(Body).GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            if (field != null && field.FieldType != typeof(float)) field = null;
+
+            BodyFieldCache[name] = field;
+            return field;
+        }
+
+        private static FieldInfo ResolveLimbField(string name)
+        {
+            if (LimbFieldCache.TryGetValue(name, out var cached)) return cached;
+
+            var field = typeof(Limb).GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            if (field != null && field.FieldType != typeof(float)) field = null;
+
+            LimbFieldCache[name] = field;
+            return field;
+        }
+
+        private static int GetLimbIndex(Limb limb)
+        {
+            if (limb == null) return -1;
+
+            if (_limbBodyField == null)
+                _limbBodyField = typeof(Limb).GetField("body", BindingFlags.Public | BindingFlags.Instance);
+
+            var body = _limbBodyField?.GetValue(limb) as Body;
+            if (body?.limbs == null) return -1;
+
+            for (var i = 0; i < body.limbs.Length; i++)
+            {
+                if (body.limbs[i] == limb) return i;
+            }
+
+            return -1;
         }
 
         public static bool TryGetLocalBody(out Body body)
