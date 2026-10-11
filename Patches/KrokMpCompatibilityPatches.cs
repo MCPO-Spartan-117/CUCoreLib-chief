@@ -19,11 +19,15 @@ namespace CUCoreLib.Patches
         private const string NetObjectRegistryTypeName = "Together.NetObjectRegistry";
         private const string SyncInfoTypeName = "Together.SyncInfo";
         private const string ItemSetupListenerTypeName = "Together.Item_SetupItems_Listener";
+        private const string TryCraftPatchTypeName = "Together.PlayerCamera_TryCraft_MultiplayerPatch";
+        private const string ServerTryCraftHandlerName = "Server_PlayerCamera_TryCraft";
         private static bool _installed;
         private static bool _retryScheduled;
         private static bool _chunkRetryScheduled;
         private static bool _syncInfoPatched;
         private static bool _liquidRegistryPatched;
+        private static bool _tryCraftPatched;
+        private static bool _serverTryCraftPatched;
         private static List<string> _canonicalLiquidOrder;
         private static MethodInfo _serverEnsureItemNetworkRegisteredMethod;
 
@@ -73,7 +77,38 @@ namespace CUCoreLib.Patches
                 }
             }
 
-            if (!_syncInfoPatched && !_liquidRegistryPatched)
+            if (!_tryCraftPatched) // Hopefully this isn't too fragile. Sends a request to the server on unknown recipes
+            {
+                var tryCraftPatchType = ResolveLoadedType(TryCraftPatchTypeName);
+                if (tryCraftPatchType != null)
+                {
+                    var prefixMethod = AccessTools.Method(tryCraftPatchType, "Prefix");
+                    if (prefixMethod != null)
+                    {
+                        harmony.Patch(prefixMethod,
+                            prefix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
+                                nameof(TryCraft_Prefix))
+                            {
+                                priority = Priority.First
+                            });
+                        _tryCraftPatched = true;
+                    }
+
+                    var serverHandlerMethod = AccessTools.Method(tryCraftPatchType, ServerTryCraftHandlerName);
+                    if (serverHandlerMethod != null)
+                    {
+                        harmony.Patch(serverHandlerMethod,
+                            prefix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
+                                nameof(ServerTryCraft_Prefix))
+                            {
+                                priority = Priority.First
+                            });
+                        _serverTryCraftPatched = true;
+                    }
+                }
+            }
+
+            if (!_syncInfoPatched && !_liquidRegistryPatched && !_tryCraftPatched && !_serverTryCraftPatched)
             {
                 ScheduleRetry(harmony);
                 return;
@@ -155,6 +190,29 @@ namespace CUCoreLib.Patches
         private static void RefreshLiquidRegistry_AfterItemSetup()
         {
             RefreshLiquidRegistry();
+        }
+
+        private static bool TryCraft_Prefix()
+        {
+            if (!MultiplayerBridge.IsRunning || MultiplayerBridge.IsServer) return true;
+
+            var camera = PlayerCamera.main;
+            if (camera == null) return true;
+
+            var recipeIndex = camera.selectedRecipe;
+            if (recipeIndex < 0 || recipeIndex >= Recipes.recipes.Count) return true;
+
+            var recipe = Recipes.recipes[recipeIndex];
+            if (!MultiplayerApi.ShouldRouteCraftToServer(recipe)) return true;
+
+            MultiplayerApi.RequestServerCraft(recipeIndex, _ => { });
+            camera.RefreshRecipeList();
+            return false;
+        }
+
+        private static bool ServerTryCraft_Prefix()
+        {
+            return false;
         }
 
         private static bool TryResolveResourcePrefab(string resourceStringId, out GameObject prefab)

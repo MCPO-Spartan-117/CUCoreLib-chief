@@ -126,7 +126,7 @@ namespace CUCoreLib.Registries
                 return added;
             }
 
-            CUCoreLibPlugin.Log?.LogInfo($"Recipes: Added {added} recipes.");
+            CUCoreLibPlugin.Log?.LogDebug($"Recipes: Added {added} recipes.");
 
             return added;
         }
@@ -349,6 +349,44 @@ namespace CUCoreLib.Registries
         }
 
         // MP Sync for recipes
+        internal static JObject SerializeRecipe(Recipe recipe)
+        {
+            if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) return null;
+
+            var items = new JArray();
+            if (recipe.items != null)
+                foreach (var item in recipe.items)
+                {
+                    if (item == null) continue;
+                    items.Add(new JObject
+                    {
+                        ["specificId"] = item.specificId ?? string.Empty,
+                        ["isLiquid"] = item.isLiquid,
+                        ["minimumCondition"] = item.minimumCondition,
+                        ["destroyItem"] = item.destroyItem,
+                        ["quality"] = NetworkSnapshotSerialization.WriteCraftingQualities(
+                            item.quality != null ? new[] { item.quality } : null)
+                    });
+                }
+
+            return new JObject
+            {
+                ["INT"] = recipe.INT,
+                ["specialKnown"] = recipe.specialKnown,
+                ["category"] = (int)recipe.category,
+                ["isRepair"] = recipe.isRepair,
+                ["result"] = new JObject
+                {
+                    ["id"] = recipe.result.id,
+                    ["isLiquid"] = recipe.result.isLiquid,
+                    ["amount"] = recipe.result.amount,
+                    ["resultCondition"] = recipe.result.resultCondition,
+                    ["dontDrainResultLiquid"] = recipe.result.dontDrainResultLiquid
+                },
+                ["items"] = items
+            };
+        }
+
         internal static JObject CaptureNetworkSnapshot()
         {
             var recipes = new JArray();
@@ -356,40 +394,8 @@ namespace CUCoreLib.Registries
             {
                 try
                 {
-                    if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) continue;
-
-                    var items = new JArray();
-                    if (recipe.items != null)
-                        foreach (var item in recipe.items)
-                        {
-                            if (item == null) continue;
-                            items.Add(new JObject
-                            {
-                                ["specificId"] = item.specificId ?? string.Empty,
-                                ["isLiquid"] = item.isLiquid,
-                                ["minimumCondition"] = item.minimumCondition,
-                                ["destroyItem"] = item.destroyItem,
-                                ["quality"] = NetworkSnapshotSerialization.WriteCraftingQualities(
-                                    item.quality != null ? new[] { item.quality } : null)
-                            });
-                        }
-
-                    recipes.Add(new JObject
-                    {
-                        ["INT"] = recipe.INT,
-                        ["specialKnown"] = recipe.specialKnown,
-                        ["category"] = (int)recipe.category,
-                        ["isRepair"] = recipe.isRepair,
-                        ["result"] = new JObject
-                        {
-                            ["id"] = recipe.result.id,
-                            ["isLiquid"] = recipe.result.isLiquid,
-                            ["amount"] = recipe.result.amount,
-                            ["resultCondition"] = recipe.result.resultCondition,
-                            ["dontDrainResultLiquid"] = recipe.result.dontDrainResultLiquid
-                        },
-                        ["items"] = items
-                    });
+                    var serialized = SerializeRecipe(recipe);
+                    if (serialized != null) recipes.Add(serialized);
                 }
                 catch
                 {

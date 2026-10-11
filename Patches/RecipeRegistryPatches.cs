@@ -174,8 +174,6 @@ namespace CUCoreLib.Patches
                 var success = response?.Value<bool?>("success") ?? false;
                 if (!success)
                 {
-                    var error = response?.Value<string>("error") ?? "Unknown error";
-                    CUCoreLibPlugin.Log?.LogWarning($"Server denied craft request..., {error}");
                     if (PlayerCamera.main != null)
                         PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Deny);
                     return;

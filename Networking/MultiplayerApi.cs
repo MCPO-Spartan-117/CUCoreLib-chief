@@ -393,20 +393,47 @@ namespace CUCoreLib.Networking
 
         private static JToken HandleCraftRequest(uint senderClientId, JToken payload)
         {
-            var recipeIndex = payload?.Value<int?>("recipeIndex") ?? -1;
-            if (recipeIndex < 0 || Recipes.recipes == null || recipeIndex >= Recipes.recipes.Count)
+            var resultId = payload?.Value<string>("resultId");
+            if (string.IsNullOrWhiteSpace(resultId) || Recipes.recipes == null)
                 return new JObject { ["success"] = false, ["error"] = "Invalid recipe" };
 
-            var recipe = Recipes.recipes[recipeIndex];
-            if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id))
-                return new JObject { ["success"] = false, ["error"] = "Invalid recipe result" };
+            Recipe recipe = null;
+            var recipeIndex = -1;
+            for (var i = 0; i < Recipes.recipes.Count; i++)
+            {
+                if (Recipes.recipes[i]?.result?.id == resultId)
+                {
+                    recipe = Recipes.recipes[i];
+                    recipeIndex = i;
+                    break;
+                }
+            }
+
+            if (recipe == null)
+                return new JObject { ["success"] = false, ["error"] = "Recipe not found" };
 
             if (!TryGetBodyFromClientId(senderClientId, out var body))
                 return new JObject { ["success"] = false, ["error"] = "Player not found" };
 
-            var ingredients = recipe.GetItemsForRecipe();
-            if (ingredients == null)
-                return new JObject { ["success"] = false, ["error"] = "Missing ingredients" };
+            var allItems = body.GetAllItemsThorough();
+            var nearbyItems = UnityEngine.Physics2D.OverlapCircleAll(body.transform.position, 10f, UnityEngine.LayerMask.GetMask("Item"));
+            foreach (var col in nearbyItems)
+            {
+                if (col.TryGetComponent<Item>(out var item) && body.DoPickupCheck(item, true))
+                    allItems.Add(item);
+            }
+
+            var ingredients = new System.Collections.Generic.List<Item>();
+            var usedItems = new System.Collections.Generic.List<Item>();
+            foreach (var recipeItem in recipe.items)
+            {
+                var match = recipeItem.GetMatchingItem(allItems, usedItems);
+                if (match == null)
+                    return new JObject { ["success"] = false, ["error"] = "Missing ingredients" };
+                ingredients.Add(match);
+                if (recipeItem.destroyItem && !recipeItem.isLiquid)
+                    usedItems.Add(match);
+            }
 
             for (var i = 0; i < ingredients.Count; i++)
                 recipe.items[i].UseItem(ingredients[i]);
@@ -433,10 +460,6 @@ namespace CUCoreLib.Networking
                         component.TryGetComponent<WaterContainerItem>(out var wat))
                         wat.stack = new System.Collections.Generic.List<LiquidStack>();
                 }
-                else
-                {
-                    CUCoreLibPlugin.Log?.LogError($"Failed to craftspawn '{recipe.result.id}' for client {senderClientId}!");
-                }
             }
 
             Sound.Play("combine", body.transform.position);
@@ -459,12 +482,7 @@ namespace CUCoreLib.Networking
         private static void HandleCraftResponse(JToken payload)
         {
             var success = payload?.Value<bool?>("success") ?? false;
-            if (!success)
-            {
-                var error = payload?.Value<string>("error") ?? "Unknown error";
-                CUCoreLibPlugin.Log?.LogWarning($"Server denied craft request: {error}");
-                return;
-            }
+            if (!success) return;
 
             PlayCraftSuccessEffects();
         }
@@ -478,9 +496,15 @@ namespace CUCoreLib.Networking
         internal static bool RequestServerCraft(int recipeIndex, Action<JToken> onResponse, bool reliable = true)
         {
             RegisterCraftHandlers();
+            if (recipeIndex < 0 || Recipes.recipes == null || recipeIndex >= Recipes.recipes.Count) return false;
+            
+            var recipe = Recipes.recipes[recipeIndex];
+            var resultId = recipe?.result?.id;
+            if (string.IsNullOrWhiteSpace(resultId)) return false;
+            
             return RequestServer(
                 CraftRequestChannel,
-                new JObject { ["recipeIndex"] = recipeIndex },
+                new JObject { ["resultId"] = resultId },
                 token => onResponse?.Invoke(token),
                 reliable);
         }
@@ -491,7 +515,7 @@ namespace CUCoreLib.Networking
             if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) return false;
             if (recipe.result.isLiquid) return false;
 
-            return !Registries.ItemRegistry.RegisteredItems.ContainsKey(recipe.result.id);
+            return true;
         }
 
         public static bool ApplyAbsolute(Body body, string field, float value)
