@@ -7,5 +7,6 @@ namespace CUCoreLib.Data
     {
         public string Key { get; set; }
         public bool SaveEnabled { get; set; } = true;
+        public bool ClientAuthoritative { get; set; }
     }
 }

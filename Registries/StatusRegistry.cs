@@ -104,6 +104,7 @@ namespace CUCoreLib.Registries
             foreach (var entry in EnumerateBodyStatuses(body))
             {
                 if (entry.Value == null || !TryCapture(entry.Value, out var payload)) continue;
+                if (StatusMetadata.TryCreate(entry.Key, out var meta) && meta.ClientAuthoritative) continue;
 
                 bodyStatuses.Add(new JObject
                 {
@@ -129,6 +130,7 @@ namespace CUCoreLib.Registries
                     foreach (var entry in EnumerateLimbStatuses(limb))
                     {
                         if (entry.Value == null || !TryCapture(entry.Value, out var payload)) continue;
+                        if (StatusMetadata.TryCreate(entry.Key, out var meta) && meta.ClientAuthoritative) continue;
 
                         limbStatuses.Add(new JObject
                         {
@@ -243,21 +245,20 @@ namespace CUCoreLib.Registries
 
             var typeName = obj.Value<string>("type");
             var statusType = typeName == null ? null : Type.GetType(typeName, false);
+            StatusMetadata resolvedMeta;
             if (statusType == null)
             {
-                // Tolerate legacy tokens that only carry the registry key inside
-                // the inner envelope (e.g. when an older peer sent the payload
-                // without the outer per-slot wrapper): resolve it through the
-                // metadata index instead of a type name lookup.
                 var key = envelope.Value<string>("type");
-                if (key == null || !StatusMetadata.TryResolve(key, out var metadata)) return;
+                if (key == null || !StatusMetadata.TryResolve(key, out resolvedMeta)) return;
 
-                statusType = metadata.StatusType;
+                statusType = resolvedMeta.StatusType;
             }
-            else if (!StatusMetadata.TryCreate(statusType, out _))
+            else if (!StatusMetadata.TryCreate(statusType, out resolvedMeta))
             {
                 return;
             }
+
+            if (resolvedMeta != null && resolvedMeta.ClientAuthoritative) return;
 
             if (isBody && !typeof(BodyStatus).IsAssignableFrom(statusType)) return;
 
@@ -339,6 +340,7 @@ namespace CUCoreLib.Registries
 
             internal string Key;
             internal bool SaveEnabled;
+            internal bool ClientAuthoritative;
 
             internal Type StatusType;
 
@@ -357,7 +359,8 @@ namespace CUCoreLib.Registries
                 {
                     StatusType = type,
                     Key = key,
-                    SaveEnabled = options == null || options.SaveEnabled
+                    SaveEnabled = options == null || options.SaveEnabled,
+                    ClientAuthoritative = options != null && options.ClientAuthoritative
                 };
 
                 ByType[type] = metadata;

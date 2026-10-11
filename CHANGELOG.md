@@ -30,6 +30,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 
 ### Fixes
 - Multiplayer liquid sync now uses the host's liquid ordering, if possible
+- Fixed entire mod crashing when referencing invalid mod ID as dependancy
 
 ## v1.0.5 (MPV4 LTS)
 
