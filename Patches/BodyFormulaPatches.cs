@@ -29,38 +29,32 @@ namespace CUCoreLib.Patches
 
         [HarmonyPatch(typeof(Body), "HandleCirculation")]
         [HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> HandleCirculation_Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
+        private static IEnumerable<CodeInstruction> HandleCirculation_Transpiler(IEnumerable<CodeInstruction> instructions) {
             var codes = new List<CodeInstruction>(instructions);
-            for (var i = 0; i < codes.Count; i++)
-            {
+            for (var i = 0; i < codes.Count; i++) {
                 CodeInstruction instruction = codes[i];
                 if (instruction.Calls(FloatMoveTowardsMethod) &&
                     TryFindStoredBodyField(codes, i + 1, out string fieldName) &&
-                    string.Equals(fieldName, "respiratoryRate", System.StringComparison.Ordinal))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldarg_0);
-                    yield return new CodeInstruction(OpCodes.Call,
+                    string.Equals(fieldName, "respiratoryRate", System.StringComparison.Ordinal)) {
+                        yield return new CodeInstruction(OpCodes.Ldarg_0);
+                        yield return new CodeInstruction(OpCodes.Call,
                         AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustRespiratoryRateTarget)));
-                    continue;
+                        continue;
                 }
 
                 if (instruction.Calls(FloatLerpMethod) &&
-                    TryFindStoredBodyField(codes, i + 1, out fieldName))
-                {
-                    if (string.Equals(fieldName, "heartRate", System.StringComparison.Ordinal))
-                    {
+                    TryFindStoredBodyField(codes, i + 1, out fieldName)) {
+                    if (string.Equals(fieldName, "heartRate", System.StringComparison.Ordinal)) {
                         yield return new CodeInstruction(OpCodes.Ldarg_0);
                         yield return new CodeInstruction(OpCodes.Call,
-                            AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustHeartRateTarget)));
+                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustHeartRateTarget)));
                         continue;
                     }
 
-                    if (string.Equals(fieldName, "bloodPressure", System.StringComparison.Ordinal))
-                    {
+                    if (string.Equals(fieldName, "bloodPressure", System.StringComparison.Ordinal)) {
                         yield return new CodeInstruction(OpCodes.Ldarg_0);
                         yield return new CodeInstruction(OpCodes.Call,
-                            AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustBloodPressureTarget)));
+                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustBloodPressureTarget)));
                         continue;
                     }
                 }
