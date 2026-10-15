@@ -18,9 +18,6 @@ namespace CUCoreLib.Data
         public Dictionary<string, float> AveragePain = new Dictionary<string, float>();
 
         [JsonIgnore]
-        public float AppliedAveragePainContribution;
-
-        [JsonIgnore]
         public bool HasAnyFormulaEdits =>
             HasContributions(BloodPressure) ||
             HasContributions(HeartRate) ||

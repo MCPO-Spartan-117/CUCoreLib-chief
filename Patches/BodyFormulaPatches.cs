@@ -69,6 +69,30 @@ namespace CUCoreLib.Patches
             }
         }
 
+        [HarmonyPatch(typeof(Body), "HandleBody")]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> AveragePainAdd(IEnumerable<CodeInstruction> instructions) {
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            Dictionary<string, (Type, string)> typefuncarr = new Dictionary<string, (Type, string)>(PeriodicReplacements);
+            FieldInfo averagePain = AccessTools.Field(typeof(Body), nameof(Body.averagePain));
+            for(int i = 0; i < codes.Count; i++) {
+                if(codes[i].opcode == Ldarg_0 && codes[i + 1].opcode == Ldarg_0 && codes[i + 2].LoadsField(averagePain)) {
+                    List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                        new CodeInstruction(Ldarg_0),
+                        Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                        LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.AveragePain)),
+                        Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                        new CodeInstruction(Add)
+                    };
+
+                    codes.InsertRange(i + 3, callfunct);
+                    break;
+                }
+            }
+
+            return codes;
+        }
+
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
         [HarmonyTranspiler]
         public static IEnumerable<CodeInstruction> HandlePeriodicChecks_Transpiler(IEnumerable<CodeInstruction> instructions) {
@@ -204,30 +228,6 @@ namespace CUCoreLib.Patches
             }
 
             return (IEnumerable<CodeInstruction>)codes;
-        }
-
-        private static void ApplyAveragePainContribution(Body body)
-        {
-            if (body == null || body.limbs == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            float contribution = BodyFormulaData.Sum(data.AveragePain);
-            float previousContribution = data.AppliedAveragePainContribution;
-
-            foreach (Limb limb in body.limbs)
-            {
-                if (limb == null || limb.dismembered)
-                {
-                    continue;
-                }
-
-                limb.pain = Mathf.Clamp(limb.pain - previousContribution + contribution, 0f, 100f);
-            }
-
-            data.AppliedAveragePainContribution = contribution;
         }
 
         private static bool TryFindStoredBodyField(IReadOnlyList<CodeInstruction> instructions, int startIndex,
