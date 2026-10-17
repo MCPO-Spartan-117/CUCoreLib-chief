@@ -10,13 +10,16 @@ I figured that this would be nice to have, as to easily take a look at everythin
 ## v1.0.7 (Nightly)
 
 ### New Stuff!
-- ...update mod version for a cool github release tag..?
+- Added client-authoratative attribute field for statuses
+- Implement Apply() and ApplyAbsolute() for Networking status sync
 
 ### Changes
 - (WIP)
 
 ### Fixes
-- (WIP)
+- Fixed multiplayer crafting (for streamed recipe data). It uses the host authority to craft unknown items now :)
+- The settings window now shifts left when a mod adds a custom settings sidebar, so the window + sidebar pair stays centred
+
 
 ## v1.0.6 (Stable)
 

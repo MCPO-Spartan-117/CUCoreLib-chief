@@ -31,6 +31,8 @@ namespace CUCoreLib.Helpers
         private float railScrollTarget = 1f;
         private float railScrollVelocity;
         private GameObject frame;
+        private RectTransform panel;
+        private Vector2 panelHomePosition;
         private RectTransform railContent;
         private RectTransform railViewport;
         private ScrollRect railScroll;
@@ -248,11 +250,26 @@ namespace CUCoreLib.Helpers
             var panelRect = template.transform.parent as RectTransform;
             if (rootRect == null || panelRect == null) return false;
 
+            if (panel != panelRect)
+            {
+                panel = panelRect;
+                panelHomePosition = panelRect.anchoredPosition;
+            }
+
             var corners = new Vector3[4];
             panelRect.GetWorldCorners(corners);
             var panelTopLeft = rootRect.InverseTransformPoint(corners[1]);
             var panelTopRight = rootRect.InverseTransformPoint(corners[2]);
             var panelBottomLeft = rootRect.InverseTransformPoint(corners[0]);
+
+            // The rail hangs past the panel's right edge, so slide the panel left by half of that
+            // overhang. Panel and rail then read as one centred block.
+            var overhang = Mathf.Min(RailWidth + RailEdgeGap, rootRect.rect.xMax - panelTopRight.x);
+            var slide = overhang * 0.5f;
+            panelRect.anchoredPosition = panelHomePosition - Vector2.right * slide;
+            panelTopLeft -= Vector3.right * slide;
+            panelTopRight -= Vector3.right * slide;
+            panelBottomLeft -= Vector3.right * slide;
 
             frame = new GameObject(RailFrameName, typeof(RectTransform));
             frame.transform.SetParent(rootRect, false);
@@ -350,6 +367,12 @@ namespace CUCoreLib.Helpers
             railContent = null;
             railViewport = null;
             railScroll = null;
+
+            if (panel)
+            {
+                panel.anchoredPosition = panelHomePosition;
+                panel = null;
+            }
 
             if (!frame) return;
 

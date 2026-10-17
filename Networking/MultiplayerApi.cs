@@ -85,6 +85,10 @@ namespace CUCoreLib.Networking
             new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
         private static readonly Dictionary<string, FieldInfo> LimbFieldCache =
             new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, FieldInfo> BodyBoolFieldCache =
+            new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, FieldInfo> LimbBoolFieldCache =
+            new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
         private static FieldInfo _limbBodyField;
 
         public static bool IsAvailable => MultiplayerBridge.IsAvailable;
@@ -574,6 +578,44 @@ namespace CUCoreLib.Networking
             return SendBodyFieldRequest("limb", name, "add", delta, limbIndex);
         }
 
+        public static bool ApplyAbsolute(Body body, string field, bool value)
+        {
+            if (body == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+
+            if (!IsClient || IsServer)
+                return ApplyBodyBoolField(body, name, value);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyBoolFieldRequest("body", name, value, 0);
+        }
+
+        public static bool Apply(Body body, string field, bool value)
+        {
+            return ApplyAbsolute(body, field, value);
+        }
+
+        public static bool ApplyAbsolute(Limb limb, string field, bool value)
+        {
+            if (limb == null || string.IsNullOrWhiteSpace(field)) return false;
+
+            var name = field.Trim();
+            var limbIndex = GetLimbIndex(limb);
+            if (limbIndex < 0) return false;
+
+            if (!IsClient || IsServer)
+                return ApplyLimbBoolField(limb, name, value);
+
+            RegisterBodyFieldHandlers();
+            return SendBodyBoolFieldRequest("limb", name, value, limbIndex);
+        }
+
+        public static bool Apply(Limb limb, string field, bool value)
+        {
+            return ApplyAbsolute(limb, field, value);
+        }
+
         internal static void RegisterBodyFieldHandlers()
         {
             ContentReloadSession.AssertNotActive("MultiplayerApi.RegisterBodyFieldHandlers()",
@@ -590,19 +632,31 @@ namespace CUCoreLib.Networking
             var targetKind = payload?.Value<string>("target");
             var field = payload?.Value<string>("field")?.Trim();
             var mode = payload?.Value<string>("mode");
-            var value = payload?.Value<float?>("value") ?? 0f;
             var limbIndex = payload?.Value<int?>("limbIndex") ?? -1;
-            var isDelta = string.Equals(mode, "add", StringComparison.Ordinal);
 
             if (!TryGetBodyFromClientId(senderClientId, out var body))
                 return new JObject { ["success"] = false };
 
             bool success;
-            if (string.Equals(targetKind, "limb", StringComparison.Ordinal)
-                && limbIndex >= 0 && body.limbs != null && limbIndex < body.limbs.Length)
-                success = ApplyLimbField(body.limbs[limbIndex], field, value, isDelta);
+            if (string.Equals(mode, "setbool", StringComparison.Ordinal))
+            {
+                var boolValue = payload?.Value<bool?>("boolValue") ?? false;
+                if (string.Equals(targetKind, "limb", StringComparison.Ordinal)
+                    && limbIndex >= 0 && body.limbs != null && limbIndex < body.limbs.Length)
+                    success = ApplyLimbBoolField(body.limbs[limbIndex], field, boolValue);
+                else
+                    success = ApplyBodyBoolField(body, field, boolValue);
+            }
             else
-                success = ApplyBodyField(body, field, value, isDelta);
+            {
+                var value = payload?.Value<float?>("value") ?? 0f;
+                var isDelta = string.Equals(mode, "add", StringComparison.Ordinal);
+                if (string.Equals(targetKind, "limb", StringComparison.Ordinal)
+                    && limbIndex >= 0 && body.limbs != null && limbIndex < body.limbs.Length)
+                    success = ApplyLimbField(body.limbs[limbIndex], field, value, isDelta);
+                else
+                    success = ApplyBodyField(body, field, value, isDelta);
+            }
 
             return new JObject { ["success"] = success };
         }
@@ -615,6 +669,18 @@ namespace CUCoreLib.Networking
                 ["field"] = field,
                 ["mode"] = mode,
                 ["value"] = value,
+                ["limbIndex"] = limbIndex
+            });
+        }
+
+        private static bool SendBodyBoolFieldRequest(string target, string field, bool value, int limbIndex)
+        {
+            return SendToServer(BodyFieldChannel, new JObject
+            {
+                ["target"] = target,
+                ["field"] = field,
+                ["mode"] = "setbool",
+                ["boolValue"] = value,
                 ["limbIndex"] = limbIndex
             });
         }
@@ -647,6 +713,28 @@ namespace CUCoreLib.Networking
             return true;
         }
 
+        private static bool ApplyBodyBoolField(Body body, string field, bool value)
+        {
+            if (string.IsNullOrWhiteSpace(field)) return false;
+
+            var fieldInfo = ResolveBodyBoolField(field);
+            if (fieldInfo == null) return false;
+
+            fieldInfo.SetValue(body, value);
+            return true;
+        }
+
+        private static bool ApplyLimbBoolField(Limb limb, string field, bool value)
+        {
+            if (string.IsNullOrWhiteSpace(field)) return false;
+
+            var fieldInfo = ResolveLimbBoolField(field);
+            if (fieldInfo == null) return false;
+
+            fieldInfo.SetValue(limb, value);
+            return true;
+        }
+
         private static FieldInfo ResolveBodyField(string name)
         {
             if (BodyFieldCache.TryGetValue(name, out var cached)) return cached;
@@ -666,6 +754,28 @@ namespace CUCoreLib.Networking
             if (field != null && field.FieldType != typeof(float)) field = null;
 
             LimbFieldCache[name] = field;
+            return field;
+        }
+
+        private static FieldInfo ResolveBodyBoolField(string name)
+        {
+            if (BodyBoolFieldCache.TryGetValue(name, out var cached)) return cached;
+
+            var field = typeof(Body).GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            if (field != null && field.FieldType != typeof(bool)) field = null;
+
+            BodyBoolFieldCache[name] = field;
+            return field;
+        }
+
+        private static FieldInfo ResolveLimbBoolField(string name)
+        {
+            if (LimbBoolFieldCache.TryGetValue(name, out var cached)) return cached;
+
+            var field = typeof(Limb).GetField(name, BindingFlags.Public | BindingFlags.Instance);
+            if (field != null && field.FieldType != typeof(bool)) field = null;
+
+            LimbBoolFieldCache[name] = field;
             return field;
         }
 
