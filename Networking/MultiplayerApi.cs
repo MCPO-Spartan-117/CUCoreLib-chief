@@ -519,7 +519,26 @@ namespace CUCoreLib.Networking
             if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) return false;
             if (recipe.result.isLiquid) return false;
 
+            // Only crafts with custom content need this, we can skip vanilla
+            if (!UsesCustomContent(recipe)) return false;
+
             return true;
+        }
+
+        private static bool UsesCustomContent(Recipe recipe)
+        {
+            if (ItemRegistry.RegisteredItems == null) return false;
+            if (ItemRegistry.RegisteredItems.ContainsKey(recipe.result.id)) return true;
+
+            if (recipe.items != null)
+                for (var i = 0; i < recipe.items.Count; i++)
+                {
+                    var ingredient = recipe.items[i];
+                    if (ingredient != null && ingredient.specific &&
+                        ItemRegistry.RegisteredItems.ContainsKey(ingredient.specificId)) return true;
+                }
+
+            return false;
         }
 
         public static bool ApplyAbsolute(Body body, string field, float value)

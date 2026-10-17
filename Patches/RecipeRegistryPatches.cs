@@ -169,7 +169,7 @@ namespace CUCoreLib.Patches
         {
             if (!MultiplayerApi.ShouldRouteCraftToServer(__instance)) return true;
 
-            MultiplayerApi.RequestServerCraft(__instance.index, response =>
+            if (!MultiplayerApi.RequestServerCraft(__instance.index, response =>
             {
                 var success = response?.Value<bool?>("success") ?? false;
                 if (!success)
@@ -181,7 +181,7 @@ namespace CUCoreLib.Patches
 
                 if (PlayerCamera.main != null)
                     PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Click);
-            });
+            })) return true;
 
             return false;
         }
