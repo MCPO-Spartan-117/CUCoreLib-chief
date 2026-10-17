@@ -7,18 +7,19 @@ I figured that this would be nice to have, as to easily take a look at everythin
 
 **Fixes** refers to bugfixes that will not or are very unlikely to break your mod
 
-## v1.0.7 (Nightly)
+## v1.0.7+ (Nightly)
 
 ### New Stuff!
-- Added client-authoratative attribute field for statuses
+- Added client-authoratative attribute field for statuses (Thanks, ovoid_ovvie!)
 - Implement Apply() and ApplyAbsolute() for Networking status sync
 
 ### Changes
-- (WIP)
+- CCLBody overhaul (Thanks, @MCPO-Spartan-117)
 
 ### Fixes
 - Fixed multiplayer crafting (for streamed recipe data). It uses the host authority to craft unknown items now :)
 - The settings window now shifts left when a mod adds a custom settings sidebar, so the window + sidebar pair stays centred
+- Skipped patching vanilla recipes in MP for CCL, which should help compatibility (and for the future mp update)
 
 
 ## v1.0.6 (Stable)
