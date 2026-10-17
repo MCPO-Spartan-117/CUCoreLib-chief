@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using static System.Reflection.Emit.OpCodes;
 using CUCoreLib.Data;
 using CUCoreLib.Helpers;
 using HarmonyLib;
+using static HarmonyLib.CodeInstruction;
 using UnityEngine;
 
 namespace CUCoreLib.Patches
@@ -11,13 +14,11 @@ namespace CUCoreLib.Patches
     [HarmonyPatch]
     internal static class BodyFormulaPatches
     {
-        private static readonly Dictionary<string, MethodInfo> PeriodicReplacements =
-            new Dictionary<string, MethodInfo>
-            {
-                ["maxEncumberance"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetMaxEncumberance)),
-                ["totalEncumberance"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetTotalEncumberance)),
-                ["immunity"] = AccessTools.Method(typeof(BodyFormulaPatches), nameof(SetImmunity))
-            };
+        private static readonly Dictionary<string, (Type, string)> PeriodicReplacements = new Dictionary<string, (Type, string)>() {
+            ["maxEncumberance"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.MaxEncumberance)),
+            ["totalEncumberance"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.TotalEncumberance)),
+            ["immunity"] = (typeof(BodyFormulaData), nameof(BodyFormulaData.Immunity))
+        };
 
         private static readonly MethodInfo FloatLerpMethod =
             AccessTools.Method(typeof(Mathf), nameof(Mathf.Lerp), new[] { typeof(float), typeof(float), typeof(float) });
@@ -28,94 +29,89 @@ namespace CUCoreLib.Patches
 
         [HarmonyPatch(typeof(Body), "HandleCirculation")]
         [HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> HandleCirculation_Transpiler(IEnumerable<CodeInstruction> instructions)
-        {
+        private static IEnumerable<CodeInstruction> HandleCirculation_Transpiler(IEnumerable<CodeInstruction> instructions) {
             var codes = new List<CodeInstruction>(instructions);
-            for (var i = 0; i < codes.Count; i++)
-            {
+            for (var i = 0; i < codes.Count; i++) {
                 CodeInstruction instruction = codes[i];
                 if (instruction.Calls(FloatMoveTowardsMethod) &&
                     TryFindStoredBodyField(codes, i + 1, out string fieldName) &&
-                    string.Equals(fieldName, "respiratoryRate", System.StringComparison.Ordinal))
-                {
-                    yield return new CodeInstruction(OpCodes.Ldarg_0);
-                    yield return new CodeInstruction(OpCodes.Call,
+                    string.Equals(fieldName, "respiratoryRate", System.StringComparison.Ordinal)) {
+                        yield return new CodeInstruction(OpCodes.Ldarg_0);
+                        yield return new CodeInstruction(OpCodes.Call,
                         AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustRespiratoryRateTarget)));
-                    continue;
+                        continue;
                 }
 
                 if (instruction.Calls(FloatLerpMethod) &&
-                    TryFindStoredBodyField(codes, i + 1, out fieldName))
-                {
-                    if (string.Equals(fieldName, "heartRate", System.StringComparison.Ordinal))
-                    {
+                    TryFindStoredBodyField(codes, i + 1, out fieldName)) {
+                    if (string.Equals(fieldName, "heartRate", System.StringComparison.Ordinal)) {
                         yield return new CodeInstruction(OpCodes.Ldarg_0);
                         yield return new CodeInstruction(OpCodes.Call,
-                            AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustHeartRateTarget)));
+                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustHeartRateTarget)));
                         continue;
                     }
 
-                    if (string.Equals(fieldName, "bloodPressure", System.StringComparison.Ordinal))
-                    {
+                    if (string.Equals(fieldName, "bloodPressure", System.StringComparison.Ordinal)) {
                         yield return new CodeInstruction(OpCodes.Ldarg_0);
                         yield return new CodeInstruction(OpCodes.Call,
-                            AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustBloodPressureTarget)));
+                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(AdjustBloodPressureTarget)));
                         continue;
                     }
                 }
 
                 yield return instruction;
             }
+        }
+
+        [HarmonyPatch(typeof(Body), "HandleBody")]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> AveragePainAdd(IEnumerable<CodeInstruction> instructions) {
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            Dictionary<string, (Type, string)> typefuncarr = new Dictionary<string, (Type, string)>(PeriodicReplacements);
+            FieldInfo averagePain = AccessTools.Field(typeof(Body), nameof(Body.averagePain));
+            for(int i = 0; i < codes.Count; i++) {
+                if(codes[i].opcode == Ldarg_0 && codes[i + 1].opcode == Ldarg_0 && codes[i + 2].LoadsField(averagePain)) {
+                    List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                        new CodeInstruction(Ldarg_0),
+                        Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                        LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.AveragePain)),
+                        Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                        new CodeInstruction(Add)
+                    };
+
+                    codes.InsertRange(i + 3, callfunct);
+                    break;
+                }
+            }
+
+            return codes;
         }
 
         [HarmonyPatch(typeof(Body), "HandlePeriodicChecks")]
         [HarmonyTranspiler]
-        private static IEnumerable<CodeInstruction> HandlePeriodicChecks_Transpiler(
-            IEnumerable<CodeInstruction> instructions)
-        {
-            var codes = new List<CodeInstruction>(instructions);
-            bool insertedAveragePainPatch = false;
+        public static IEnumerable<CodeInstruction> HandlePeriodicChecks_Transpiler(IEnumerable<CodeInstruction> instructions) {
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            Dictionary<string, (Type, string)> typefuncarr = new Dictionary<string, (Type, string)>(PeriodicReplacements);
+            List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                new CodeInstruction(Ldarg_0),
+                Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                null,
+                Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                new CodeInstruction(Add)
+            };
 
-            for (var i = 0; i < codes.Count; i++)
-            {
-                if (!insertedAveragePainPatch &&
-                    i + 2 < codes.Count &&
-                    codes[i].opcode == OpCodes.Ldarg_0 &&
-                    IsZeroFloatLoad(codes[i + 1]) &&
-                    codes[i + 2].opcode == OpCodes.Stfld &&
-                    codes[i + 2].operand is FieldInfo averagePainField &&
-                    averagePainField.DeclaringType == typeof(Body) &&
-                    averagePainField.Name == "averagePain")
-                {
-                    insertedAveragePainPatch = true;
-                    yield return new CodeInstruction(OpCodes.Ldarg_0);
-                    yield return new CodeInstruction(OpCodes.Call,
-                        AccessTools.Method(typeof(BodyFormulaPatches), nameof(ApplyAveragePainContribution)));
+            for(int i = codes.Count - 1; i >= 0; i--) {
+                if(codes[i].opcode == Stfld) {
+                    FieldInfo field = (FieldInfo)codes[i].operand;
+                    if(field.DeclaringType == typeof(Body) && typefuncarr.TryGetValue(field.Name, out (Type type, string name) typefunc)) {
+                        callfunct[2] = LoadField(typefunc.type, typefunc.name);
+                        codes.InsertRange(i, callfunct);
+                        typefuncarr.Remove(field.Name);
+                    }
                 }
-
-                CodeInstruction instruction = codes[i];
-                if (instruction.opcode == OpCodes.Stfld &&
-                    instruction.operand is FieldInfo field &&
-                    field.DeclaringType == typeof(Body) &&
-                    PeriodicReplacements.TryGetValue(field.Name, out MethodInfo setter))
-                {
-                    yield return new CodeInstruction(OpCodes.Call, setter)
-                    {
-                        labels = new List<Label>(instruction.labels),
-                        blocks = new List<ExceptionBlock>(instruction.blocks)
-                    };
-                    continue;
-                }
-
-                yield return instruction;
             }
-        }
 
-        [HarmonyPatch(typeof(Body), "Start")]
-        [HarmonyPostfix]
-        private static void Start_Postfix(Body __instance)
-        {
-            ApplyJumpSpeedContribution(__instance);
+            return codes;
         }
 
         private static IEnumerable<CodeInstruction> ReplaceBodyFieldStores(
@@ -165,43 +161,67 @@ namespace CUCoreLib.Patches
             return Mathf.Lerp(current, target + BodyFormulaData.Sum(data.BloodPressure), t);
         }
 
-        internal static void ApplyJumpSpeedContribution(Body body)
-        {
-            if (body == null)
-            {
-                return;
+        [HarmonyPatch(typeof(Body), "get_" + nameof(Body.actualMaxSpeed))]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> MaxSpeedAdd(IEnumerable<CodeInstruction> instructions, ILGenerator ILGen) {
+            List<int> fieldlist = new List<int>();
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            FieldInfo BodymaxSpeed = AccessTools.Field(typeof(Body), nameof(Body.maxSpeed));
+            for (int i = codes.Count - 1; i >= 0; i--) {
+                if (codes[i].LoadsField(BodymaxSpeed)) {
+                    fieldlist.Add(i);
+                }
             }
 
-            BodyFormulaData data = body.GetBodyFormulaData();
-            float contribution = BodyFormulaData.Sum(data.JumpSpeed);
-            float previousContribution = data.AppliedJumpSpeedContribution;
+            if (fieldlist.Count != 0) {
+                LocalBuilder maxSpeedvar = ILGen.DeclareLocal(typeof(float));
+                List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                    new CodeInstruction(Ldarg_0),
+                    LoadField(typeof(Body), nameof(Body.maxSpeed)),
+                    new CodeInstruction(Ldarg_0),
+                    Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                    LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.MaxSpeed)),
+                    Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                    new CodeInstruction(Add),
+                    new CodeInstruction(Stloc, maxSpeedvar)
+                };
 
-            body.jumpSpeed = Mathf.Max(0f, body.jumpSpeed - previousContribution + contribution);
-            data.AppliedJumpSpeedContribution = contribution;
-        }
-
-        private static void ApplyAveragePainContribution(Body body)
-        {
-            if (body == null || body.limbs == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            float contribution = BodyFormulaData.Sum(data.AveragePain);
-            float previousContribution = data.AppliedAveragePainContribution;
-
-            foreach (Limb limb in body.limbs)
-            {
-                if (limb == null || limb.dismembered)
-                {
-                    continue;
+                foreach(int index in fieldlist) {
+                    codes[index] = new CodeInstruction(Ldloc, maxSpeedvar);
+                    codes.RemoveAt(index - 1);
                 }
 
-                limb.pain = Mathf.Clamp(limb.pain - previousContribution + contribution, 0f, 100f);
+                codes.InsertRange(0, callfunct);
             }
 
-            data.AppliedAveragePainContribution = contribution;
+            return (IEnumerable<CodeInstruction>)codes;
+        }
+
+        [HarmonyPatch(typeof(Body), "get_" + nameof(Body.actualJumpSpeed))]
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> JumpSpeedAdd(IEnumerable<CodeInstruction> instructions) {
+            var methodidx = -1;
+            List<CodeInstruction> codes = new List<CodeInstruction>(instructions);
+            FieldInfo BodyjumpSpeed = AccessTools.Field(typeof(Body), nameof(Body.jumpSpeed));
+            for (var i = 0; i < codes.Count; i++) {
+                if (codes[i].LoadsField(BodyjumpSpeed)) {
+                    methodidx = i;
+                    break;
+                }
+            }
+
+            if (methodidx != -1) {
+                List<CodeInstruction> callfunct = new List<CodeInstruction>() {
+                    new CodeInstruction(Ldarg_0),
+                    Call(typeof(StatusExtensions), nameof(StatusExtensions.GetBodyFormulaData)),
+                    LoadField(typeof(BodyFormulaData), nameof(BodyFormulaData.JumpSpeed)),
+                    Call(typeof(BodyFormulaData), nameof(BodyFormulaData.Sum)),
+                    new CodeInstruction(Add)
+                };
+                codes.InsertRange(methodidx + 1, callfunct);
+            }
+
+            return (IEnumerable<CodeInstruction>)codes;
         }
 
         private static bool TryFindStoredBodyField(IReadOnlyList<CodeInstruction> instructions, int startIndex,
@@ -229,39 +249,6 @@ namespace CUCoreLib.Patches
             return instruction.opcode == OpCodes.Ldc_R4 &&
                    instruction.operand is float value &&
                    Mathf.Approximately(value, 0f);
-        }
-
-        private static void SetMaxEncumberance(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.maxEncumberance = Mathf.Max(0f, value + BodyFormulaData.Sum(data.MaxEncumberance));
-        }
-
-        private static void SetTotalEncumberance(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.totalEncumberance = Mathf.Max(0f, value + BodyFormulaData.Sum(data.TotalEncumberance));
-        }
-
-        private static void SetImmunity(Body body, float value)
-        {
-            if (body == null)
-            {
-                return;
-            }
-
-            BodyFormulaData data = body.GetBodyFormulaData();
-            body.immunity = value + BodyFormulaData.Sum(data.Immunity);
         }
     }
 }
