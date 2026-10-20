@@ -12,6 +12,8 @@ namespace CUCoreLib.Patches
     internal static class RecipeRegistryPatches
     {
         private static int selectedRecipeRefreshCount;
+        private static bool cacheRecipeItemPool;
+        private static List<Item> recipeItemPool;
 
         internal static void RefreshCraftingUi()
         {
@@ -76,6 +78,74 @@ namespace CUCoreLib.Patches
             }
 
             return true;
+        }
+
+        [HarmonyPatch(typeof(PlayerCamera), "RefreshRecipeList")]
+        [HarmonyPrefix]
+        private static void BeginRecipeItemPoolCache()
+        {
+            cacheRecipeItemPool = true;
+            recipeItemPool = null;
+        }
+
+        [HarmonyPatch(typeof(PlayerCamera), "RefreshRecipeList")]
+        [HarmonyFinalizer]
+        private static void EndRecipeItemPoolCache()
+        {
+            cacheRecipeItemPool = false;
+            recipeItemPool = null;
+        }
+
+        // Should be good enough for compatibility
+        [HarmonyPatch(typeof(Recipe), nameof(Recipe.GetItemsForRecipe))]
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.Last)]
+        private static bool MatchRecipeFromCachedPool(Recipe __instance, ref List<Item> __result, bool __runOriginal)
+        {
+            if (!__runOriginal || !cacheRecipeItemPool) return __runOriginal;
+            __result = MatchRecipeItems(__instance, false);
+            return false;
+        }
+
+        [HarmonyPatch(typeof(Recipe), nameof(Recipe.GetItemsForRecipeThorough))]
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.Last)]
+        private static bool MatchRecipeThoroughFromCachedPool(Recipe __instance, ref List<Item> __result,
+            bool __runOriginal)
+        {
+            if (!__runOriginal || !cacheRecipeItemPool) return __runOriginal;
+            __result = MatchRecipeItems(__instance, true);
+            return false;
+        }
+
+        private static List<Item> MatchRecipeItems(Recipe recipe, bool thorough)
+        {
+            if (recipeItemPool == null)
+            {
+                var body = PlayerCamera.main.body;
+                recipeItemPool = body.GetAllItemsThorough();
+                foreach (var hit in Physics2D.OverlapCircleAll(body.transform.position, 10f, LayerMask.GetMask("Item")))
+                    if (hit.TryGetComponent<Item>(out var nearby) && body.DoPickupCheck(nearby, true))
+                        recipeItemPool.Add(nearby);
+            }
+
+            var matched = new List<Item>();
+            var consumed = new List<Item>();
+            foreach (var ingredient in recipe.items)
+            {
+                var match = ingredient.GetMatchingItem(recipeItemPool, consumed);
+                if (match == null)
+                {
+                    if (!thorough) return null;
+                    matched.Add(null);
+                    continue;
+                }
+
+                matched.Add(match);
+                if (ingredient.destroyItem && !ingredient.isLiquid) consumed.Add(match);
+            }
+
+            return matched;
         }
 
         [HarmonyPatch(typeof(PlayerCamera), "RefreshRecipeList")]

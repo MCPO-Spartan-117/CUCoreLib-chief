@@ -130,6 +130,7 @@ namespace CUCoreLib.Registries
         {
             if (!TryGetCustomInfo(id, out var info)) return false;
             if (Liquids.Registry == null) return false;
+            if (Liquids.Registry.ContainsKey(id.Trim())) return true;
 
             try
             {
