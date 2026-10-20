@@ -10,8 +10,10 @@ I figured that this would be nice to have, as to easily take a look at everythin
 ## v1.0.7+ (Nightly)
 
 ### New Stuff!
-- Added client-authoratative attribute field for statuses (Thanks, ovoid_ovvie!)
-- Implement Apply() and ApplyAbsolute() for Networking status sync
+- Added client-authoritative attribute field for statuses (Thanks, ovoid_ovvie!)
+- Implement Apply() and ApplyAbsolute() for networking status sync
+- Text option for settings
+- .cfg options are automatically appended to your mod options menu, if there are no collisions
 
 ### Changes
 - CCLBody overhaul (Thanks, @MCPO-Spartan-117)
@@ -26,15 +28,15 @@ I figured that this would be nice to have, as to easily take a look at everythin
 
 ### New Stuff!
 - Multiplayer snapshots now sync custom locale strings and recipes, and supports v5
-- It is time. (for fullgame preperations)
+- It is time. (for fullgame preparations)
 
 ### Changes
-- Multiplayer support now targets **Together v5.0.0** (plugin GUID `CasualtiesMP`). KrokMP 4.0.1 and 4.1.2 support has been deprecated. (If you need v4 support, you'll need to download CUCoreLib `v1.0.5` - mods written with cucorelib's api should still work!)
+- Multiplayer support now targets **Together v5.0.0** (plugin GUID `CasualtiesMP`). KrokMP 4.0.1 and 4.1.2 support has been deprecated. (If you need v4 support, you'll need to download CUCoreLib `v1.0.5` - mods written with CUCoreLib's api should still work!)
 - Custom building and custom liquid save data now carries the layer it was captured on (for saving + loading, in case the layer changes)
 
 ### Fixes
 - Multiplayer liquid sync now uses the host's liquid ordering, if possible
-- Fixed entire mod crashing when referencing invalid mod ID as dependancy
+- Fixed entire mod crashing when referencing invalid mod ID as dependency
 
 ## v1.0.5 (MPV4 LTS)
 
@@ -56,7 +58,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 ### Changes
 - I guess the mod's v1.0.5 now? I pushed a hotfix, but that had the v1.0.5 version. I guess the stable is v1.0.5 now and next nightly is v1.0.6 then :p
 - Moodle queues now default to .5s refresh (this matches vanilla, so it should fix mismatched animations)
-- Explicit MP support for buildingEntites, tiles. Note this might break for people using v1.0.4/1.0.5 <-> v1.0.6 in terms of crossplay
+- Explicit MP support for buildingEntities, tiles. Note this might break for people using v1.0.4/1.0.5 <-> v1.0.6 in terms of crossplay
 - Custom buildings (and items) no longer stick around between scene changes in certain cases. This shouldn't (?) break your mods, but do tell me if it does
 - Dropped the KrokMP v3 compat backfill, surely there's no one using v3 nowadays
 
@@ -69,7 +71,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - Fixed custom battery charge resetting (Thanks, MCPO-Spartan-117!)
 - ""Fixed"" large amounts of data being truncated when sending over multiplayer requests
 - Fixed `AddRigidbody2D` (t'was a layer issue)
-- Fixed modded buildingEntites ignoring locale overlays for buildingEntites
+- Fixed modded buildingEntities ignoring locale overlays for buildingEntities
 - Reworked settings UI
 - `setbodyfield` and `setlimbfield` now autofill custom statuses too
 - Fixed liquidStack<> containers from always spawning at 100%
@@ -107,13 +109,13 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - It feels kinda weird making QoL changelogs in here, but the reason that one hasn't gotten any updates is since it's tied to mpv5, (which is in its early playtest phase) and I really don't want to navigate my tangled version control to handpick the features and remove v5 support. Guuuh.
 - `LightProperties` supports local `Rotation` (light rotation), `Offset` (light offset), and `FalloffIntensity` (harshness/softness)
 - Added optional sync between `ModOptionsRegistry` settings and manually bound BepInEx config entries when they share the same namespaced ID or key suffix
-- Added `CCLBody` for formula-owned vanilla `Body` fields such as blood pressure and encumberance values, so mods can inject simple per-mod contributions without writing their own Harmony patches.
+- Added `CCLBody` for formula-owned vanilla `Body` fields such as blood pressure and encumbrance values, so mods can inject simple per-mod contributions without writing their own Harmony patches.
 - ^ do send suggestions for more body fields that might want to be added!
 - `StatusMoodleDefinition` can now carry a direct sprite icon instead of requiring a pre-existing vanilla icon ID.
 - Tiles? Liquids? Why not both? Added early liquid tile support
 - Liquid registration now has an onuse field and inject field that can be used in place of the item
 - Removed the watermark, except it wasn't there in the first place and didn't even work, erm...
-- QoL Unknown-multiplayer-CUCorelib compatibility patch, may or may not work
+- QoL Unknown-multiplayer-CUCoreLib compatibility patch, may or may not work
 - Custom tile drops are no longer tied to KrokMP compatibility (yeah.)
 - Settings menu description fixes
 - Fixed a startup `InvalidProgramException`, affecting only a few people (?)

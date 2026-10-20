@@ -200,6 +200,7 @@
         <Compile Include="Data\BodyAnimationPackManifest.cs"/>
         <Compile Include="Data\BodyFormulaData.cs"/>
         <Compile Include="Data\ModOptionDefinition.cs"/>
+        <Compile Include="Data\SettingString.cs"/>
         <Compile Include="Data\RegisteredSpriteAnimation.cs"/>
         <Compile Include="Data\StatusBase.cs"/>
         <Compile Include="Data\StatusMoodleDefinition.cs"/>
@@ -235,6 +236,7 @@
         <Compile Include="Helpers\LocaleLoader.cs"/>
         <Compile Include="Helpers\LaunchOverrideManager.cs"/>
         <Compile Include="Helpers\ModSettingsConfigSyncRegistry.cs"/>
+        <Compile Include="Helpers\BepInExConfigAutoRegistrar.cs"/>
         <Compile Include="Helpers\SettingsMenuCategoryExtender.cs"/>
         <Compile Include="Helpers\GameBuild.cs"/>
         <Compile Include="Networking\MultiplayerApi.cs"/>

@@ -268,6 +268,9 @@ namespace CUCoreLib.Registries
                     return keybindSetting != null
                         ? (object)keybindSetting.value.ToString()
                         : option.KeyDefault.ToString();
+                case ModOptionKind.Text:
+                    var textSetting = Settings.Get<SettingString>(option.Id);
+                    return textSetting != null ? (object)textSetting.value : option.StringDefault;
                 default:
                     return null;
             }
@@ -331,6 +334,17 @@ namespace CUCoreLib.Registries
                         Enum.TryParse(valueToken.Value<string>(), out KeyCode keyCode))
                     {
                         setting.value = keyCode;
+                        setting.Apply();
+                    }
+
+                    break;
+                }
+                case ModOptionKind.Text:
+                {
+                    var setting = Settings.Get<SettingString>(option.Id);
+                    if (setting != null && valueToken.Type != JTokenType.Null)
+                    {
+                        setting.value = valueToken.Value<string>() ?? string.Empty;
                         setting.Apply();
                     }
 

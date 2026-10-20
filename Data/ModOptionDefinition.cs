@@ -29,6 +29,9 @@ namespace CUCoreLib.Data
         internal Action<int> DropdownApply { get; private set; }
         internal Action<bool> BoolApply { get; private set; }
         internal Action<KeyCode> KeybindApply { get; private set; }
+        internal Action<string> TextApply { get; private set; }
+        internal string StringDefault { get; private set; }
+        internal string Placeholder { get; private set; }
 
         internal bool UsesCustomCategory => !string.IsNullOrWhiteSpace(CustomCategory);
 
@@ -159,6 +162,30 @@ namespace CUCoreLib.Data
             return CreateKeybind(id, label, description, default, category, defaultValue, apply);
         }
 
+        public static ModOptionDefinition Text(
+            string id,
+            string label,
+            string description,
+            Setting.SettingCategory category,
+            string defaultValue,
+            Action<string> apply = null,
+            string placeholder = null)
+        {
+            return CreateText(id, label, description, category, null, defaultValue, apply, placeholder);
+        }
+
+        public static ModOptionDefinition Text(
+            string id,
+            string label,
+            string description,
+            string category,
+            string defaultValue,
+            Action<string> apply = null,
+            string placeholder = null)
+        {
+            return CreateText(id, label, description, default, category, defaultValue, apply, placeholder);
+        }
+
         internal Setting CreateSetting()
         {
             switch (Kind)
@@ -227,6 +254,18 @@ namespace CUCoreLib.Data
                         {
                             var setting = Settings.Get<SettingKeybind>(Id);
                             if (setting != null) KeybindApply?.Invoke(setting.value);
+                        }
+                    };
+                case ModOptionKind.Text:
+                    return new SettingString
+                    {
+                        name = Id,
+                        value = StringDefault ?? string.Empty,
+                        category = Category,
+                        apply = () =>
+                        {
+                            var setting = Settings.Get<SettingString>(Id);
+                            if (setting != null) TextApply?.Invoke(setting.value);
                         }
                     };
                 default:
@@ -342,6 +381,24 @@ namespace CUCoreLib.Data
             definition.KeybindApply = apply;
             return definition;
         }
+
+        private static ModOptionDefinition CreateText(
+            string id,
+            string label,
+            string description,
+            Setting.SettingCategory category,
+            string customCategory,
+            string defaultValue,
+            Action<string> apply,
+            string placeholder)
+        {
+            var definition = CreateBase(id, label, description, category, customCategory);
+            definition.Kind = ModOptionKind.Text;
+            definition.StringDefault = defaultValue ?? string.Empty;
+            definition.TextApply = apply;
+            definition.Placeholder = placeholder;
+            return definition;
+        }
     }
 
     public sealed class ModDropdownChoice
@@ -362,6 +419,7 @@ namespace CUCoreLib.Data
         Int,
         Bool,
         Dropdown,
-        Keybind
+        Keybind,
+        Text
     }
 }

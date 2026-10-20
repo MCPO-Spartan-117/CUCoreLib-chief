@@ -1180,6 +1180,20 @@ private void RegisterGlassworksSettings()
         }
     ));
 
+    ModOptionsRegistry.Register(ModOptionDefinition.Text(
+        "glassworks.game.playername",
+        "Player name",
+        "Custom name shown in Glassworks UI.",
+        "Glassworks",
+        PlayerPrefs.GetString("Glassworks_PlayerName", "Player"),
+        value =>
+        {
+            PlayerPrefs.SetString("Glassworks_PlayerName", value);
+            PlayerPrefs.Save();
+        },
+        "Enter name..."
+    ));
+
     // For simple one-key actions, CUCoreLib can own the hidden keybind ID for you.
     CUCoreUtils.GetFriendlyKeyBind("R").disableInInputFields = true;
     CUCoreUtils.GetFriendlyKeyBind("R").disableInMainMenu = true;

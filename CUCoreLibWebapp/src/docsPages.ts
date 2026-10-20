@@ -2808,6 +2808,7 @@ private void Awake()
             <tr><td><span class="inline-code">ModOptionDefinition.Bool</span></td><td>Toggle</td><td><span class="inline-code">bool</span></td></tr>
             <tr><td><span class="inline-code">ModOptionDefinition.Dropdown</span></td><td>Dropdown</td><td>Selected choice index</td></tr>
             <tr><td><span class="inline-code">ModOptionDefinition.Keybind</span></td><td>Keybind button</td><td><span class="inline-code">KeyCode</span></td></tr>
+            <tr><td><span class="inline-code">ModOptionDefinition.Text</span></td><td>Text input</td><td><span class="inline-code">string</span></td></tr>
           </tbody>
         </table>
       </div>

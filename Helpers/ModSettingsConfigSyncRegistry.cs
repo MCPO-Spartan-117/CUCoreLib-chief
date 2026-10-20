@@ -409,6 +409,9 @@ namespace CUCoreLib.Helpers
                     }
                     error = DescribeExpectedValue("keybind", rawValue);
                     return false;
+                case ModOptionKind.Text:
+                    convertedValue = rawValue?.ToString() ?? string.Empty;
+                    return true;
                 default:
                     error = $"unsupported option kind '{option.Kind}'.";
                     return false;
@@ -511,6 +514,13 @@ namespace CUCoreLib.Helpers
                         convertedValue = keyCode;
                     else
                         convertedValue = Convert.ChangeType((int)keyCode, targetType, CultureInfo.InvariantCulture);
+                    return true;
+                case ModOptionKind.Text:
+                    var textValue = rawValue?.ToString() ?? string.Empty;
+                    if (targetType == typeof(string) || targetType == typeof(object))
+                        convertedValue = textValue;
+                    else
+                        convertedValue = Convert.ChangeType(textValue, targetType, CultureInfo.InvariantCulture);
                     return true;
                 default:
                     error = $"unsupported option kind '{option.Kind}'.";
@@ -697,6 +707,8 @@ namespace CUCoreLib.Helpers
                     return setting is SettingDropdown dropdownSetting ? (object)dropdownSetting.value : null;
                 case ModOptionKind.Keybind:
                     return setting is SettingKeybind keybindSetting ? (object)keybindSetting.value : null;
+                case ModOptionKind.Text:
+                    return setting is SettingString stringSetting ? (object)stringSetting.value : null;
                 default:
                     return null;
             }
@@ -731,6 +743,10 @@ namespace CUCoreLib.Helpers
                             keybindSetting.value = (KeyCode)Convert.ToInt32(value, CultureInfo.InvariantCulture);
                     }
 
+                    break;
+                case ModOptionKind.Text:
+                    if (setting is SettingString stringSetting)
+                        stringSetting.value = value?.ToString() ?? string.Empty;
                     break;
             }
         }
