@@ -702,6 +702,13 @@ namespace CUCoreLib.Data
         /// Tool condition/battery lost per successful hit.
         /// </summary>
         public float ConditionLossOnHit = 0.02f;
+
+        public delegate bool BeforeAttackDele(ref object PassState, AttackInfo attackinfo, Body body, Item item);
+        public delegate void AfterAttackDele(ref object PassState, AttackInfo attackinfo, Body body, Item item);
+
+        public BeforeAttackDele BeforeAttack = null;
+
+        public AfterAttackDele AfterAttack = null;
     }
 
     /// <summary>
@@ -768,6 +775,13 @@ namespace CUCoreLib.Data
         /// Local offset for the vanilla muzzle-particle transform.
         /// </summary>
         public Vector2? MuzzleOffset;
+
+        public delegate bool BeforeAttackDele(ref object PassState, GunScript guninfo, Body body, Item item);
+        public delegate void AfterAttackDele(ref object PassState, GunScript guninfo, Body body, Item item);
+
+        public BeforeAttackDele BeforeAttack = null;
+
+        public AfterAttackDele AfterAttack = null;
     }
 
     /// <summary>
