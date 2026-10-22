@@ -43,6 +43,8 @@ namespace CUCoreLib.Registries
 
         private static ParticleSystem.Particle[][] _renderParticleBuffers;
         private static int[] _renderParticleCounts;
+        private static Color[] _renderColors;
+        private static bool[] _renderColorResolved;
 
         private static bool _summaryLogged;
 
@@ -341,19 +343,43 @@ namespace CUCoreLib.Registries
             var byType = _renderParticleBuffers;
             var counts = _renderParticleCounts;
 
-            for (var x = range.Item1.min; x < range.Item1.max; x++)
+            if (_renderColors == null || _renderColors.Length != byType.Length)
             {
-                for (var y = range.Item2.min; y < range.Item2.max; y++)
+                _renderColors = new Color[byType.Length];
+                _renderColorResolved = new bool[byType.Length];
+            }
+            Array.Clear(_renderColorResolved, 0, _renderColorResolved.Length);
+
+            var world = WorldGeneration.world;
+            var fluid = manager.fluid;
+            var maxX = fluid.GetLength(0) - 1;
+            var maxY = fluid.GetLength(1) - 1;
+            var minX = Math.Max(range.Item1.min, 0);
+            var endX = Math.Min(range.Item1.max, maxX + 1);
+            var minY = Math.Max(range.Item2.min, 0);
+            var endY = Math.Min(range.Item2.max, maxY + 1);
+
+            for (var x = minX; x < endX; x++)
+            {
+                var left = Math.Max(x - 1, 0);
+                var right = Math.Min(x + 1, maxX);
+                for (var y = minY; y < endY; y++)
                 {
-                    var worldByte = manager.GetLiquid(x, y);
+                    var worldByte = fluid[x, y];
                     if (worldByte == 0) continue;
 
                     var index = worldByte - 1;
                     if (index < 0 || index >= byType.Length) continue;
 
-                    var openTop = manager.GetLiquid(x, y + 1) == 0 &&
-                                  (manager.GetLiquid(x + 1, y) == 0 || manager.GetLiquid(x - 1, y) == 0);
-                    var color = TryGetDisplayColor(worldByte, out var customColor) ? customColor : Color.white;
+                    var openTop = fluid[x, Math.Min(y + 1, maxY)] == 0 &&
+                                  (fluid[right, y] == 0 || fluid[left, y] == 0);
+                    if (!_renderColorResolved[index])
+                    {
+                        _renderColors[index] = TryGetDisplayColor(worldByte, out var customColor)
+                            ? customColor
+                            : Color.white;
+                        _renderColorResolved[index] = true;
+                    }
 
                     var list = byType[index];
                     if (counts[index] >= list.Length)
@@ -365,18 +391,23 @@ namespace CUCoreLib.Registries
                     }
                     list[counts[index]++] = new ParticleSystem.Particle
                     {
-                        position = WorldGeneration.world.BlockToWorldPos(new Vector2Int(x, y)) +
+                        position = world.BlockToWorldPos(new Vector2Int(x, y)) +
                                    (openTop ? new Vector2(0f, -0.3125f) : Vector2.zero),
                         startLifetime = 999f,
                         remainingLifetime = 999f,
-                        startColor = color,
+                        startColor = _renderColors[index],
                         startSize3D = new Vector2(1.25f, openTop ? 0.625f : 1.25f)
                     };
                 }
             }
 
             for (var i = 0; i < particles.Count; i++)
+            {
+                // Increase particles (tiles)
+                var main = particles[i].main;
+                if (main.maxParticles < counts[i]) main.maxParticles = counts[i];
                 particles[i].SetParticles(byType[i], counts[i]);
+            }
 
             return true;
         }
@@ -774,7 +805,11 @@ namespace CUCoreLib.Registries
 
         private static int GetMaxAssignedWorldByte()
         {
-            return WorldByteToTileId.Count == 0 ? 0 : WorldByteToTileId.Keys.Max(key => (int)key);
+            // A loop rather than Keys.Max: this runs on every fluid render pass, and LINQ allocates.
+            var max = 0;
+            foreach (var key in WorldByteToTileId.Keys)
+                if (key > max) max = key;
+            return max;
         }
 
         private static void ApplyMappingSnapshotInternal(JObject snapshot)

@@ -15,8 +15,6 @@ namespace CUCoreLib.Networking
     {
         private const string CustomPlayerDataChannel = "cucorelib.playerdata.get";
         private const string CustomPlayerLimbDataChannel = "cucorelib.playerdata.limbs.get";
-        private const string CraftRequestChannel = "cucorelib.craft.request";
-        private const string CraftResponseChannel = "cucorelib.craft.response";
         private const string BodyFieldChannel = "cucorelib.bodyfield.apply";
         private const string NetPlayerTypeName = "Together.ScavPlayer";
         private const string KrokMpPluginGuid = "CasualtiesMP";
@@ -79,7 +77,6 @@ namespace CUCoreLib.Networking
         private static MemberInfo _playerBodyMember;
         private static FieldInfo _netPlayerBodyField;
         private static bool _playerDataHandlersRegistered;
-        private static bool _craftHandlersRegistered;
         private static bool _bodyFieldHandlersRegistered;
         private static readonly Dictionary<string, FieldInfo> BodyFieldCache =
             new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
@@ -316,7 +313,6 @@ namespace CUCoreLib.Networking
                 "Multiplayer registration is excluded from strict content reload.");
             MultiplayerSyncRegistry.RegisterBuiltIns();
             RegisterCustomPlayerDataHandlers();
-            RegisterCraftHandlers();
             RegisterBodyFieldHandlers();
         }
 
@@ -381,164 +377,6 @@ namespace CUCoreLib.Networking
                 var clientId = payload?.Value<uint?>("clientId") ?? 0u;
                 return GetCustomPlayerLimbData(clientId);
             });
-        }
-
-        internal static void RegisterCraftHandlers()
-        {
-            ContentReloadSession.AssertNotActive("MultiplayerApi.RegisterCraftHandlers()",
-                "Multiplayer registration is excluded from strict content reload.");
-
-            if (_craftHandlersRegistered) return;
-
-            _craftHandlersRegistered = true;
-            MultiplayerBridge.RegisterServerHandler(CraftRequestChannel, HandleCraftRequest);
-            RegisterClientHandler(CraftResponseChannel, HandleCraftResponse);
-        }
-
-        private static JToken HandleCraftRequest(uint senderClientId, JToken payload)
-        {
-            var resultId = payload?.Value<string>("resultId");
-            if (string.IsNullOrWhiteSpace(resultId) || Recipes.recipes == null)
-                return new JObject { ["success"] = false, ["error"] = "Invalid recipe" };
-
-            Recipe recipe = null;
-            var recipeIndex = -1;
-            for (var i = 0; i < Recipes.recipes.Count; i++)
-            {
-                if (Recipes.recipes[i]?.result?.id == resultId)
-                {
-                    recipe = Recipes.recipes[i];
-                    recipeIndex = i;
-                    break;
-                }
-            }
-
-            if (recipe == null)
-                return new JObject { ["success"] = false, ["error"] = "Recipe not found" };
-
-            if (!TryGetBodyFromClientId(senderClientId, out var body))
-                return new JObject { ["success"] = false, ["error"] = "Player not found" };
-
-            var allItems = body.GetAllItemsThorough();
-            var nearbyItems = UnityEngine.Physics2D.OverlapCircleAll(body.transform.position, 10f, UnityEngine.LayerMask.GetMask("Item"));
-            foreach (var col in nearbyItems)
-            {
-                if (col.TryGetComponent<Item>(out var item) && body.DoPickupCheck(item, true))
-                    allItems.Add(item);
-            }
-
-            var ingredients = new System.Collections.Generic.List<Item>();
-            var usedItems = new System.Collections.Generic.List<Item>();
-            foreach (var recipeItem in recipe.items)
-            {
-                var match = recipeItem.GetMatchingItem(allItems, usedItems);
-                if (match == null)
-                    return new JObject { ["success"] = false, ["error"] = "Missing ingredients" };
-                ingredients.Add(match);
-                if (recipeItem.destroyItem && !recipeItem.isLiquid)
-                    usedItems.Add(match);
-            }
-
-            for (var i = 0; i < ingredients.Count; i++)
-                recipe.items[i].UseItem(ingredients[i]);
-
-            var skillDiff = body.skills.INT - recipe.INT;
-            var conditionMult = 1f;
-            if (skillDiff < 0 && UnityEngine.Random.value < 0.5f)
-                conditionMult = UnityEngine.Random.Range(0.2f, 0.9f);
-
-            for (var j = 0; j < recipe.result.amount; j++)
-            {
-                var resultObj = Helpers.CustomInstantiate.InstantiateReturn(recipe.result.id,
-                    body.transform.position, Quaternion.identity);
-
-                if (resultObj != null)
-                {
-                    var component = resultObj.GetComponent<Item>();
-                    if (component == null) continue;
-                    component.condition = recipe.result.resultCondition * conditionMult;
-                    body.AutoPickUpItem(component);
-                    KrokMpCompatibilityPatches.EnsureItemNetworkRegistered(resultObj);
-
-                    if (!recipe.result.dontDrainResultLiquid &&
-                        component.TryGetComponent<WaterContainerItem>(out var wat))
-                        wat.stack = new System.Collections.Generic.List<LiquidStack>();
-                }
-            }
-
-            Sound.Play("combine", body.transform.position);
-            if (!recipe.hasMadeBefore)
-            {
-                recipe.hasMadeBefore = true;
-                body.happiness += 1f;
-                body.skills.AddExp(2, 10f);
-            }
-
-            return new JObject
-            {
-                ["success"] = true,
-                ["recipeIndex"] = recipeIndex,
-                ["resultId"] = recipe.result.id,
-                ["amount"] = recipe.result.amount
-            };
-        }
-
-        private static void HandleCraftResponse(JToken payload)
-        {
-            var success = payload?.Value<bool?>("success") ?? false;
-            if (!success) return;
-
-            PlayCraftSuccessEffects();
-        }
-
-        private static void PlayCraftSuccessEffects()
-        {
-            if (PlayerCamera.main != null)
-                PlayerCamera.main.PlayUISound(PlayerCamera.UISoundType.Click);
-        }
-
-        internal static bool RequestServerCraft(int recipeIndex, Action<JToken> onResponse, bool reliable = true)
-        {
-            RegisterCraftHandlers();
-            if (recipeIndex < 0 || Recipes.recipes == null || recipeIndex >= Recipes.recipes.Count) return false;
-            
-            var recipe = Recipes.recipes[recipeIndex];
-            var resultId = recipe?.result?.id;
-            if (string.IsNullOrWhiteSpace(resultId)) return false;
-            
-            return RequestServer(
-                CraftRequestChannel,
-                new JObject { ["resultId"] = resultId },
-                token => onResponse?.Invoke(token),
-                reliable);
-        }
-
-        internal static bool ShouldRouteCraftToServer(Recipe recipe)
-        {
-            if (!IsClient || IsServer) return false;
-            if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id)) return false;
-            if (recipe.result.isLiquid) return false;
-
-            // Only crafts with custom content need this, we can skip vanilla
-            if (!UsesCustomContent(recipe)) return false;
-
-            return true;
-        }
-
-        private static bool UsesCustomContent(Recipe recipe)
-        {
-            if (ItemRegistry.RegisteredItems == null) return false;
-            if (ItemRegistry.RegisteredItems.ContainsKey(recipe.result.id)) return true;
-
-            if (recipe.items != null)
-                for (var i = 0; i < recipe.items.Count; i++)
-                {
-                    var ingredient = recipe.items[i];
-                    if (ingredient != null && ingredient.specific &&
-                        ItemRegistry.RegisteredItems.ContainsKey(ingredient.specificId)) return true;
-                }
-
-            return false;
         }
 
         public static bool ApplyAbsolute(Body body, string field, float value)

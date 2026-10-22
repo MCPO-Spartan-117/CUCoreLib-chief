@@ -243,6 +243,7 @@ namespace CUCoreLib.Networking
         internal static void MarkNewTransportSession()
         {
             _snapshotAppliedSinceTransport = false;
+            RecipeRegistry.ClearHostRecipeOrder();
         }
 
         public static bool BroadcastSnapshot(bool includeHost = false)

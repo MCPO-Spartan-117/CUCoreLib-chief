@@ -17,11 +17,13 @@ I figured that this would be nice to have, as to easily take a look at everythin
 
 ### Changes
 - CCLBody overhaul (Thanks, @MCPO-Spartan-117)
+- Updated to **Together v5.1.4** (multiplayer), for crafting compatibility additions.
 
 ### Fixes
-- Fixed multiplayer crafting (for streamed recipe data). It uses the host authority to craft unknown items now :)
+- Fixed multiplayer crafting for recipes streamed from the host, the client now translates its recipe index to the host's one
 - The settings window now shifts left when a mod adds a custom settings sidebar, so the window + sidebar pair stays centred
 - Skipped patching vanilla recipes in MP for CCL, which should help compatibility (and for the future mp update)
+- Optimized liquid tile rendering 
 
 
 ## v1.0.6 (Stable)

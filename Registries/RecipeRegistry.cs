@@ -31,6 +31,9 @@ namespace CUCoreLib.Registries
 
         private static int PendingHotReloadInjectedRecipeCount;
 
+        // Recipe key -> host recipe index,
+        private static Dictionary<string, int> HostRecipeIndices;
+
         public static void Register(Recipe recipe)
         {
             if (recipe?.result == null || string.IsNullOrWhiteSpace(recipe.result.id))
@@ -74,8 +77,9 @@ namespace CUCoreLib.Registries
             if (recipe?.result == null) return string.Empty;
 
             var ingredientKey = BuildIngredientKey(recipe.items);
+            // The host and client can compare these keys across locales
             return
-                $"{recipe.result.id}|{recipe.result.amount}|{recipe.result.resultCondition}|{recipe.result.isLiquid}|{ingredientKey}";
+                $"{recipe.result.id}|{recipe.result.amount}|{recipe.result.resultCondition.ToString(CultureInfo.InvariantCulture)}|{recipe.result.isLiquid}|{ingredientKey}";
         }
 
         internal static bool InjectSingleRecipe(Recipe recipe)
@@ -328,7 +332,7 @@ namespace CUCoreLib.Registries
                     continue;
                 }
 
-                builder.Append(item.minimumCondition);
+                builder.Append(item.minimumCondition.ToString(CultureInfo.InvariantCulture));
                 builder.Append('|');
                 builder.Append(item.isLiquid ? 'L' : 'I');
                 builder.Append('|');
@@ -402,11 +406,51 @@ namespace CUCoreLib.Registries
                 }
             }
 
-            return new JObject { ["recipes"] = recipes };
+            // Together sends recipe indices when crafting, so clients need the host's full order to translate theirs
+
+            // TODO:
+            // Clients with additional mods (adding recipes) may have more recipes than the host, which should be okay for everything but the random() seeding for blueprints
+            // Probably worth fixing on krokmp's side instead
+            var order = new JArray();
+            if (Recipes.recipes != null)
+                foreach (var recipe in Recipes.recipes)
+                    order.Add(BuildRecipeKey(recipe));
+
+            return new JObject { ["recipes"] = recipes, ["order"] = order };
+        }
+
+        internal static void ClearHostRecipeOrder()
+        {
+            HostRecipeIndices = null;
+        }
+
+        internal static bool TryGetHostRecipeIndex(int localIndex, out ushort hostIndex)
+        {
+            hostIndex = 0;
+            var hostIndices = HostRecipeIndices;
+            if (hostIndices == null || Recipes.recipes == null || localIndex < 0 ||
+                localIndex >= Recipes.recipes.Count) return false;
+
+            hostIndex = hostIndices.TryGetValue(BuildRecipeKey(Recipes.recipes[localIndex]), out var index)
+                ? (ushort)index
+                : ushort.MaxValue;
+            return true;
         }
 
         internal static void ApplyNetworkSnapshot(JObject snapshot)
         {
+            if (snapshot?["order"] is JArray order)
+            {
+                var hostIndices = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < order.Count && i <= ushort.MaxValue; i++)
+                {
+                    var key = order[i]?.ToString();
+                    if (!string.IsNullOrEmpty(key) && !hostIndices.ContainsKey(key)) hostIndices[key] = i;
+                }
+
+                HostRecipeIndices = hostIndices;
+            }
+
             if (!(snapshot?["recipes"] is JArray recipes)) return;
 
             foreach (var token in recipes)

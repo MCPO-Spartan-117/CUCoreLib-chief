@@ -19,13 +19,14 @@ namespace CUCoreLib.Patches
         private const string NetObjectRegistryTypeName = "Together.NetObjectRegistry";
         private const string SyncInfoTypeName = "Together.SyncInfo";
         private const string ItemSetupListenerTypeName = "Together.Item_SetupItems_Listener";
-        private const string TryCraftPatchTypeName = "Together.PlayerCamera_TryCraft_MultiplayerPatch";
+        private const string CraftCommitTypeName = "Together.CraftCommit";
         private static bool _installed;
         private static bool _retryScheduled;
         private static bool _chunkRetryScheduled;
         private static bool _syncInfoPatched;
         private static bool _liquidRegistryPatched;
-        private static bool _tryCraftPatched;
+        private static bool _craftAttemptPatched;
+        private static FieldInfo _craftAttemptRecipeField;
         private static List<string> _canonicalLiquidOrder;
         private static MethodInfo _serverEnsureItemNetworkRegisteredMethod;
 
@@ -75,26 +76,25 @@ namespace CUCoreLib.Patches
                 }
             }
 
-            if (!_tryCraftPatched) // Hopefully this isn't too fragile. Sends a request to the server on unknown recipes
+            if (!_craftAttemptPatched) 
             {
-                var tryCraftPatchType = ResolveLoadedType(TryCraftPatchTypeName);
-                if (tryCraftPatchType != null)
+                var craftCommitType = ResolveLoadedType(CraftCommitTypeName);
+                var sendAttempt = craftCommitType != null ? AccessTools.Method(craftCommitType, "SendAttempt") : null;
+                var attemptType = sendAttempt?.GetParameters().FirstOrDefault()?.ParameterType;
+                // Craft by recipe index
+                _craftAttemptRecipeField = attemptType != null ? AccessTools.Field(attemptType, "recipe") : null;
+                if (_craftAttemptRecipeField != null && _craftAttemptRecipeField.FieldType == typeof(ushort))
                 {
-                    var prefixMethod = AccessTools.Method(tryCraftPatchType, "Prefix");
-                    if (prefixMethod != null)
-                    {
-                        harmony.Patch(prefixMethod,
-                            prefix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
-                                nameof(TryCraft_Prefix))
-                            {
-                                priority = Priority.First
-                            });
-                        _tryCraftPatched = true;
-                    }
+                    harmony.Patch(sendAttempt,
+                        prefix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
+                            nameof(SendAttempt_Prefix)),
+                        postfix: new HarmonyMethod(typeof(KrokMpCompatibilityPatches),
+                            nameof(SendAttempt_Postfix)));
+                    _craftAttemptPatched = true;
                 }
             }
 
-            if (!_syncInfoPatched && !_liquidRegistryPatched && !_tryCraftPatched)
+            if (!_syncInfoPatched && !_liquidRegistryPatched && !_craftAttemptPatched)
             {
                 ScheduleRetry(harmony);
                 return;
@@ -178,22 +178,24 @@ namespace CUCoreLib.Patches
             RefreshLiquidRegistry();
         }
 
-        private static bool TryCraft_Prefix()
+        // Swap the local recipe index for the host's while the attempt is written. Should be okay
+        private static void SendAttempt_Prefix(object[] __args, out int __state)
         {
-            if (!MultiplayerBridge.IsRunning || MultiplayerBridge.IsServer) return true;
+            __state = -1;
+            var attempt = __args != null && __args.Length > 0 ? __args[0] : null;
+            if (attempt == null) return;
 
-            var camera = PlayerCamera.main;
-            if (camera == null) return true;
+            var localIndex = (ushort)_craftAttemptRecipeField.GetValue(attempt);
+            if (!RecipeRegistry.TryGetHostRecipeIndex(localIndex, out var hostIndex) || hostIndex == localIndex) return;
 
-            var recipeIndex = camera.selectedRecipe;
-            if (recipeIndex < 0 || recipeIndex >= Recipes.recipes.Count) return true;
+            __state = localIndex;
+            _craftAttemptRecipeField.SetValue(attempt, hostIndex);
+        }
 
-            var recipe = Recipes.recipes[recipeIndex];
-            if (!MultiplayerApi.ShouldRouteCraftToServer(recipe)) return true;
-
-            if (!MultiplayerApi.RequestServerCraft(recipeIndex, _ => { })) return true;
-            camera.RefreshRecipeList();
-            return false;
+        private static void SendAttempt_Postfix(object[] __args, int __state)
+        {
+            if (__state < 0) return;
+            _craftAttemptRecipeField.SetValue(__args[0], (ushort)__state);
         }
 
         private static bool TryResolveResourcePrefab(string resourceStringId, out GameObject prefab)

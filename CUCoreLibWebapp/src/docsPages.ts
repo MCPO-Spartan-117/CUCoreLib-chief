@@ -230,7 +230,7 @@ export const pages: Page[] = [
     label: "Multiplayer Sync",
     crumb: "Misc / API",
     title: "Multiplayer sync",
-    lead: "Together v5.0.0 Multiplayer Sync."
+    lead: "Together v5.1.4 Multiplayer Sync."
   },
   {
     id: "console",
