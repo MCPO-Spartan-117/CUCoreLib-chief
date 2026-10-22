@@ -16,6 +16,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - .cfg options are automatically appended to your mod options menu, if there are no collisions
 
 ### Changes
+- Custom liquid containers with `scaleWeightWithCondition` scale to `0.1u` at 0% condition
 - CCLBody overhaul (Thanks, @MCPO-Spartan-117)
 - Updated to **Together v5.1.4** (multiplayer), for crafting compatibility additions.
 

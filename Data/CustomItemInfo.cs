@@ -34,7 +34,9 @@ namespace CUCoreLib.Data
         public Dictionary<string, object> CustomData = new Dictionary<string, object>();
 
         /// <summary>
-        /// Weight at zero condition when <see cref="ItemInfo.scaleWeightWithCondition"/> is enabled. Defaults to <c>0f</c>.
+        /// Weight at zero condition when <see cref="ItemInfo.scaleWeightWithCondition"/> is enabled. Defaults to <c>0f</c>,
+        /// except for liquid containers (capacity or default contents set), which fall back to vanilla's <c>0.1f</c>
+        /// empty-container weight. Set a non-zero value to override for any item.
         /// </summary>
         public float scaleConditionToward;
 

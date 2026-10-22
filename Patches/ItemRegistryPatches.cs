@@ -25,6 +25,8 @@ namespace CUCoreLib.Patches
         private static readonly MethodInfo MarkLightForUpdateMethod =
             AccessTools.Method(typeof(Light2D), "MarkForUpdate");
 
+        private const float VanillaLiquidContainerWeightFloor = 0.1f;
+
         private static readonly Dictionary<int, int> NextLightLookupFrameByInstance =
             new Dictionary<int, int>();
 
@@ -97,8 +99,19 @@ namespace CUCoreLib.Patches
             if (stats == null || !stats.scaleWeightWithCondition)
                 return true;
 
-            __result = Mathf.Max(0f, Mathf.Lerp(def.scaleConditionToward, stats.weight, Mathf.Clamp01(__instance.condition)));
+            __result = Mathf.Max(0f, Mathf.Lerp(ResolveZeroConditionWeight(def), stats.weight, Mathf.Clamp01(__instance.condition)));
             return false;
+        }
+
+        /// <summary>
+        /// Resolves the weight a condition-scaled item keeps at zero condition. Liquid containers keep vanilla's 0.1f
+        /// empty-container floor unless the registration sets a non-zero <see cref="CustomItemInfo.scaleConditionToward"/>.
+        /// </summary>
+        private static float ResolveZeroConditionWeight(CustomItemInfo def)
+        {
+            if (def.scaleConditionToward != 0f) return def.scaleConditionToward;
+
+            return IsLiquidContainer(def) ? VanillaLiquidContainerWeightFloor : 0f;
         }
 
         [HarmonyPatch(typeof(WaterContainerItem), "Start")]

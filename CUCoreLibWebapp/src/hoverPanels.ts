@@ -450,11 +450,11 @@ export const hoverPanels: Record<string, HoverPanel> = {
   },
   scaleWeightWithCondition : {
     title: "scaleWeightWithCondition",
-    body: "When true, the item's weight scales linearly with its condition. At 0% condition, the item has no weight. At 100% condition, it has full weight."
+    body: "When true, the item's weight scales linearly with its condition. At 0% condition it keeps its zero-condition weight, and at 100% condition it has full weight."
   },
   scaleConditionToward: {
     title: "scaleConditionToward",
-    body: "CUCoreLib custom item setting. When scaleWeightWithCondition is true, this is the item's weight at 0% condition. Defaults to 0f."
+    body: "CUCoreLib custom item setting. When scaleWeightWithCondition is true, this is the item's weight at 0% condition. Defaults to 0f, except for liquid containers, which keep vanilla's 0.1f empty weight."
   },
   injectionSickness : {
     title: "injectionSickness",
