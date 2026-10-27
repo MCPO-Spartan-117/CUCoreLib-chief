@@ -25,6 +25,7 @@ I figured that this would be nice to have, as to easily take a look at everythin
 - The settings window now shifts left when a mod adds a custom settings sidebar, so the window + sidebar pair stays centred
 - Skipped patching vanilla recipes in MP for CCL, which should help compatibility (and for the future mp update)
 - Optimized liquid tile rendering 
+- Fixed saved body and limb statuses being skipped before their first access upon game restore (I am very smart)
 
 
 ## v1.0.6 (Stable)
